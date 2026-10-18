@@ -1,0 +1,15 @@
+# Dependencias (NUNCA deben subirse)
+node_modules/
+
+# Archivos de compilación
+dist/
+build/
+
+# Variables de entorno con claves secretas
+.env
+.env.local
+
+# Archivos de registro / logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
