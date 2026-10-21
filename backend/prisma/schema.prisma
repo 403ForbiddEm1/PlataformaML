@@ -1,0 +1,353 @@
+// backend/prisma/schema.prisma  (versión en español, completa)
+// Convención: modelos en PascalCase, campos en camelCase, sin tildes ni ñ.
+// Las tablas en PostgreSQL quedan en snake_case plural mediante @@map.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Rol {
+  SUPER_ADMIN
+  ADMIN
+  CANDIDATO
+}
+
+enum NivelEducativo {
+  BACHILLERATO
+  TECNICO
+  LICENCIATURA
+  POSTGRADO
+  MAESTRIA
+  DOCTORADO
+}
+
+enum EstadoVacante {
+  BORRADOR
+  ABIERTA
+  PAUSADA
+  CERRADA
+}
+
+enum EstadoPostulacion {
+  RECIBIDA
+  EN_REVISION
+  PRESELECCIONADA
+  ENTREVISTA
+  RECHAZADA
+  CONTRATADA
+}
+
+enum CanalNotificacion {
+  CORREO
+  WHATSAPP
+}
+
+enum EstadoNotificacion {
+  PENDIENTE
+  PROCESANDO
+  ENVIADA
+  FALLIDA
+}
+
+// ==========================================
+// 1. EMPRESAS (MULTIEMPRESA)
+// ==========================================
+
+model Empresa {
+  id            String   @id @default(uuid()) @db.Uuid
+  nombre        String   @unique
+  dominio       String?  @unique
+  activa        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  usuarios           Usuario[]
+  vacantes           Vacante[]
+  postulaciones      Postulacion[]
+  notificaciones     Notificacion[]
+  registrosAuditoria RegistroAuditoria[]
+
+  @@map("empresas")
+}
+
+// ==========================================
+// 2. USUARIOS
+// ADMIN     -> empresaId obligatorio (validar con Zod)
+// CANDIDATO -> empresaId null (es global, puede postular a varias empresas)
+// ==========================================
+
+model Usuario {
+  id             String    @id @default(uuid()) @db.Uuid
+  correo         String    @unique
+  claveHash      String // hash (bcrypt/argon2), nunca texto plano
+  nombre         String
+  apellido       String
+  telefono       String?
+  rol            Rol       @default(CANDIDATO)
+  activo         Boolean   @default(true)
+  ultimoAccesoEn DateTime?
+  creadoEn       DateTime  @default(now())
+  actualizadoEn  DateTime  @updatedAt
+
+  empresaId String?  @db.Uuid
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  perfilCandidato    PerfilCandidato?
+  postulaciones      Postulacion[]
+  vacantesCreadas    Vacante[]                    @relation("CreadorVacante")
+  cambiosDeEstado    HistorialEstadoPostulacion[]
+  notificaciones     Notificacion[]
+  registrosAuditoria RegistroAuditoria[]
+
+  @@index([empresaId, rol])
+  @@map("usuarios")
+}
+
+// ==========================================
+// 3. PERFIL DEL CANDIDATO (variables para ML)
+// Pertenece a la persona, no a una empresa.
+// Cada empresa lo ve únicamente a través de Postulacion.
+// ==========================================
+
+model PerfilCandidato {
+  id        String  @id @default(uuid()) @db.Uuid
+  usuarioId String  @unique @db.Uuid
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  urlCurriculo     String?
+  textoExtraido    String?         @db.Text
+  aniosExperiencia Int             @default(0)
+  nivelEducativo   NivelEducativo?
+  habilidades      String[]
+  idiomas          String[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([habilidades], type: Gin)
+  @@map("perfiles_candidato")
+}
+
+// ==========================================
+// 4. VACANTES
+// habilidadesRequeridas / aniosExperienciaMinimos / nivelEducativoMinimo
+// son las variables del lado de la vacante para el modelo de ML.
+// ==========================================
+
+model Vacante {
+  id            String  @id @default(uuid()) @db.Uuid
+  titulo        String
+  descripcion   String  @db.Text
+  ubicacion     String?
+  rangoSalarial String?
+
+  requisitos              String          @db.Text
+  habilidadesRequeridas   String[]
+  aniosExperienciaMinimos Int             @default(0)
+  nivelEducativoMinimo    NivelEducativo?
+
+  estado      EstadoVacante @default(BORRADOR)
+  publicadaEn DateTime?
+  cierraEn    DateTime?
+
+  empresaId String  @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  creadaPorId String  @db.Uuid
+  creadaPor   Usuario @relation("CreadorVacante", fields: [creadaPorId], references: [id], onDelete: Restrict)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  postulaciones Postulacion[]
+
+  // Necesario para la FK compuesta de Postulacion (garantiza consistencia de empresaId)
+  @@unique([id, empresaId])
+  @@index([empresaId, estado])
+  @@index([empresaId, creadoEn])
+  @@map("vacantes")
+}
+
+// ==========================================
+// 5. POSTULACIONES
+// Un candidato puede postular a TODAS las vacantes,
+// pero solo UNA vez a cada una.
+// ==========================================
+
+model Postulacion {
+  id String @id @default(uuid()) @db.Uuid
+
+  // empresaId desnormalizado a propósito: permite filtrar por empresa
+  // sin JOIN, y la FK compuesta obliga a que coincida con la de la vacante.
+  empresaId String  @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  vacanteId String  @db.Uuid
+  vacante   Vacante @relation(fields: [vacanteId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  candidatoId String  @db.Uuid
+  candidato   Usuario @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+
+  estado        EstadoPostulacion @default(RECIBIDA)
+  postuladaEn   DateTime          @default(now())
+  actualizadoEn DateTime          @updatedAt
+
+  prediccionML       PrediccionML?
+  historialDeEstados HistorialEstadoPostulacion[]
+  notificaciones     Notificacion[]
+
+  @@unique([vacanteId, candidatoId])
+  @@index([empresaId, estado])
+  @@index([vacanteId, estado])
+  @@index([candidatoId])
+  @@map("postulaciones")
+}
+
+// Trazabilidad: quién cambió qué estado y cuándo
+model HistorialEstadoPostulacion {
+  id            String      @id @default(uuid()) @db.Uuid
+  postulacionId String      @db.Uuid
+  postulacion   Postulacion @relation(fields: [postulacionId], references: [id], onDelete: Cascade)
+
+  estadoAnterior EstadoPostulacion?
+  estadoNuevo    EstadoPostulacion
+  nota           String?           @db.Text
+
+  cambiadoPorId String?  @db.Uuid
+  cambiadoPor   Usuario? @relation(fields: [cambiadoPorId], references: [id], onDelete: SetNull)
+
+  creadoEn DateTime @default(now())
+
+  @@index([postulacionId, creadoEn])
+  @@map("historial_estado_postulacion")
+}
+
+// ==========================================
+// 6. PREDICCIONES DE ML
+// ==========================================
+
+model PrediccionML {
+  id            String      @id @default(uuid()) @db.Uuid
+  postulacionId String      @unique @db.Uuid
+  postulacion   Postulacion @relation(fields: [postulacionId], references: [id], onDelete: Cascade)
+
+  puntajeAfinidad Float // 0.0 a 1.0
+  esApto          Boolean
+  versionModelo   String // ej. "random_forest_v1" (texto de respaldo)
+
+  // Modelo exacto que generó la predicción (opcional por ahora)
+  modeloId String?   @db.Uuid
+  modelo   ModeloML? @relation(fields: [modeloId], references: [id], onDelete: Restrict)
+
+  // Copia de lo que se envió al modelo: el perfil puede cambiar después
+  // y esto permite auditar y reproducir la predicción.
+  datosEntrada          Json?
+  datosCrudosPrediccion Json?
+
+  creadoEn DateTime @default(now())
+
+  @@index([versionModelo])
+  @@index([modeloId])
+  @@map("predicciones_ml")
+}
+
+// ==========================================
+// 7. COLA DE NOTIFICACIONES (patrón Queue/Worker)
+// ==========================================
+
+model Notificacion {
+  id String @id @default(uuid()) @db.Uuid
+
+  empresaId String?  @db.Uuid
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  usuarioId String  @db.Uuid
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  postulacionId String?      @db.Uuid
+  postulacion   Postulacion? @relation(fields: [postulacionId], references: [id], onDelete: SetNull)
+
+  canal        CanalNotificacion
+  tipo         String // ej. "POSTULACION_RECIBIDA", "INVITACION_ENTREVISTA"
+  destinatario String // correo o teléfono al momento de crear la notificación
+  asunto       String?
+  mensaje      String            @db.Text
+
+  estado           EstadoNotificacion @default(PENDIENTE)
+  intentos         Int                @default(0)
+  maxIntentos      Int                @default(3)
+  proximoIntentoEn DateTime           @default(now())
+  bloqueadaEn      DateTime?
+  enviadaEn        DateTime?
+  registroError    String?            @db.Text
+
+  creadoEn DateTime @default(now())
+
+  // Consulta del worker: estado = PENDIENTE AND proximoIntentoEn <= now()
+  @@index([estado, proximoIntentoEn])
+  @@index([empresaId, creadoEn])
+  @@index([usuarioId])
+  @@map("notificaciones")
+}
+
+// ==========================================
+// 8. REGISTRO DE MODELOS DE ML
+// Una fila por modelo entrenado. Guarda con qué se entrenó y qué tan bien rindió.
+// ==========================================
+
+model ModeloML {
+  id        String @id @default(uuid()) @db.Uuid
+  nombre    String // ej. "random_forest"
+  version   String // ej. "v1"
+  algoritmo String // ej. "RandomForestClassifier"
+
+  metricas           Json? // { "precision": 0.87, "sensibilidad": 0.81, "f1": 0.84, "auc": 0.91 }
+  parametros         Json? // hiperparámetros usados
+  totalEntrenamiento Int? // cantidad de registros usados para entrenar
+  entrenadoEn        DateTime?
+
+  activo   Boolean  @default(false) // el modelo que usa la plataforma ahora
+  creadoEn DateTime @default(now())
+
+  predicciones PrediccionML[]
+
+  @@unique([nombre, version])
+  @@index([activo])
+  @@map("modelos_ml")
+}
+
+// ==========================================
+// 9. AUDITORÍA
+// Solo se inserta, nunca se edita ni se borra.
+// ==========================================
+
+model RegistroAuditoria {
+  id String @id @default(uuid()) @db.Uuid
+
+  empresaId String?  @db.Uuid
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  usuarioId String?  @db.Uuid
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  accion    String // ej. "CAMBIO_ESTADO_POSTULACION", "VER_PERFIL_CANDIDATO"
+  entidad   String // ej. "Postulacion", "Vacante"
+  entidadId String? @db.Uuid
+  detalle   Json? // datos del cambio (valor anterior y nuevo)
+  ip        String?
+
+  creadoEn DateTime @default(now())
+
+  @@index([empresaId, creadoEn])
+  @@index([usuarioId, creadoEn])
+  @@index([entidad, entidadId])
+  @@map("registro_auditoria")
+}
