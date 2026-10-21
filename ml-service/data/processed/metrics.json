@@ -1,0 +1,45 @@
+{
+  "model": "TF-IDF + variables de ajuste + regresión logística",
+  "n_pairs": 360,
+  "n_train": 264,
+  "n_test": 96,
+  "test": {
+    "accuracy": 0.885,
+    "precision": 0.679,
+    "recall": 0.905,
+    "f1": 0.776,
+    "confusion_matrix": {
+      "tn": 66,
+      "fp": 9,
+      "fn": 2,
+      "tp": 19
+    },
+    "roc_auc": 0.929
+  },
+  "baseline_cosine": {
+    "accuracy": 0.625,
+    "precision": 0.358,
+    "recall": 0.905,
+    "f1": 0.514,
+    "confusion_matrix": {
+      "tn": 41,
+      "fp": 34,
+      "fn": 2,
+      "tp": 19
+    },
+    "roc_auc": 0.784,
+    "threshold": 0.24
+  },
+  "feature_weights": {
+    "cosine": -0.218,
+    "coverage": 1.447,
+    "jaccard": 0.582,
+    "shared_terms": 0.287,
+    "cand_len": 0.539,
+    "cand_years": -0.069,
+    "req_years": 0.01,
+    "years_gap": -0.067,
+    "meets_experience": 2.286
+  },
+  "note": "Datos simulados: las métricas son ilustrativas."
+}
