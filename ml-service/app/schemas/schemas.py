@@ -32,3 +32,9 @@ class ScoreOut(PredictResponse):
 
 class RankResponse(BaseModel):
     results: list[ScoreOut]
+
+
+class ExtractResponse(BaseModel):
+    filename: str
+    characters: int = Field(..., description="Cantidad de caracteres del texto extraído")
+    text: str

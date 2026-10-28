@@ -1,11 +1,12 @@
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.config import METRICS_PATH
+from app.config import MAX_UPLOAD_BYTES, METRICS_PATH
 from app.models.predict import reload_model, score_candidates
 from app.models.train import train_and_save
-from app.schemas.schemas import PredictRequest, PredictResponse, RankRequest, RankResponse
+from app.preprocessing.extract import ExtractionError, extract_text
+from app.schemas.schemas import ExtractResponse, PredictRequest, PredictResponse, RankRequest, RankResponse
 
 router = APIRouter()
 
@@ -44,3 +45,16 @@ def train():
     result = train_and_save()
     reload_model()
     return result
+
+
+@router.post("/extract", response_model=ExtractResponse)
+async def extract(file: UploadFile = File(...)):
+    """Extrae el texto de una hoja de vida o vacante en PDF o DOCX. Rechaza formatos no soportados y documentos sin texto."""
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "El archivo supera el tamaño máximo permitido (10 MB)")
+    try:
+        text = extract_text(file.filename or "", content)
+    except ExtractionError as exc:
+        raise HTTPException(exc.status_code, exc.message)
+    return ExtractResponse(filename=file.filename or "", characters=len(text), text=text)

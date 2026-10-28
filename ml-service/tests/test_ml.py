@@ -59,3 +59,19 @@ def test_metrics_and_quality():
 def test_validation_error():
     with TestClient(app) as client:
         assert client.post("/predict", json={"vacancy_text": "x"}).status_code == 422
+
+
+def test_sanity_checks_pass():
+    from app.models.sanity_check import run_checks
+
+    failed = [text for ok, text in run_checks() if not ok]
+    assert not failed, failed
+
+
+def test_comparison_includes_three_algorithms():
+    with TestClient(app) as client:
+        m = client.get("/metrics").json()
+    assert set(m["comparison"]) == {"regresion_logistica", "random_forest", "red_neuronal"}
+    assert m["selected_model"] in m["comparison"]
+    for r in m["comparison"].values():
+        assert r["test"]["f1"] > m["baseline_cosine"]["f1"]  # todos superan a la línea base

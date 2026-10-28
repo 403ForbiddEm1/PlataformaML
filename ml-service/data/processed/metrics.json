@@ -1,5 +1,7 @@
 {
-  "model": "TF-IDF + variables de ajuste + regresión logística",
+  "model": "TF-IDF + variables de ajuste + regresion_logistica",
+  "selected_model": "regresion_logistica",
+  "selection_criterion": "mayor promedio de F1 en validación cruzada agrupada por vacante (solo datos de entrenamiento)",
   "n_pairs": 360,
   "n_train": 264,
   "n_test": 96,
@@ -16,6 +18,91 @@
     },
     "roc_auc": 0.929
   },
+  "comparison": {
+    "regresion_logistica": {
+      "cv_train": {
+        "f1_mean": 0.795,
+        "f1_std": 0.064,
+        "roc_auc_mean": 0.946
+      },
+      "test": {
+        "accuracy": 0.885,
+        "precision": 0.679,
+        "recall": 0.905,
+        "f1": 0.776,
+        "confusion_matrix": {
+          "tn": 66,
+          "fp": 9,
+          "fn": 2,
+          "tp": 19
+        },
+        "roc_auc": 0.929
+      },
+      "feature_importance": {
+        "cosine": -0.218,
+        "coverage": 1.447,
+        "jaccard": 0.582,
+        "shared_terms": 0.287,
+        "cand_len": 0.539,
+        "cand_years": -0.069,
+        "req_years": 0.01,
+        "years_gap": -0.067,
+        "meets_experience": 2.286
+      }
+    },
+    "random_forest": {
+      "cv_train": {
+        "f1_mean": 0.718,
+        "f1_std": 0.105,
+        "roc_auc_mean": 0.939
+      },
+      "test": {
+        "accuracy": 0.896,
+        "precision": 0.739,
+        "recall": 0.81,
+        "f1": 0.773,
+        "confusion_matrix": {
+          "tn": 69,
+          "fp": 6,
+          "fn": 4,
+          "tp": 17
+        },
+        "roc_auc": 0.896
+      },
+      "feature_importance": {
+        "cosine": 0.096,
+        "coverage": 0.278,
+        "jaccard": 0.141,
+        "shared_terms": 0.078,
+        "cand_len": 0.039,
+        "cand_years": 0.043,
+        "req_years": 0.034,
+        "years_gap": 0.158,
+        "meets_experience": 0.133
+      }
+    },
+    "red_neuronal": {
+      "cv_train": {
+        "f1_mean": 0.772,
+        "f1_std": 0.116,
+        "roc_auc_mean": 0.95
+      },
+      "test": {
+        "accuracy": 0.896,
+        "precision": 0.789,
+        "recall": 0.714,
+        "f1": 0.75,
+        "confusion_matrix": {
+          "tn": 71,
+          "fp": 4,
+          "fn": 6,
+          "tp": 15
+        },
+        "roc_auc": 0.907
+      },
+      "feature_importance": null
+    }
+  },
   "baseline_cosine": {
     "accuracy": 0.625,
     "precision": 0.358,
@@ -29,17 +116,6 @@
     },
     "roc_auc": 0.784,
     "threshold": 0.24
-  },
-  "feature_weights": {
-    "cosine": -0.218,
-    "coverage": 1.447,
-    "jaccard": 0.582,
-    "shared_terms": 0.287,
-    "cand_len": 0.539,
-    "cand_years": -0.069,
-    "req_years": 0.01,
-    "years_gap": -0.067,
-    "meets_experience": 2.286
   },
   "note": "Datos simulados: las métricas son ilustrativas."
 }

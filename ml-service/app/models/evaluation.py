@@ -33,19 +33,23 @@ def best_cosine_threshold(cosine, y_true) -> float:
 
 
 def cross_validate(n_splits: int = 5, csv_path=DATA_RAW) -> dict:
-    """Validación cruzada agrupada por vacante (ninguna vacante aparece en entrenamiento y prueba a la vez)."""
-    from app.models.train import fit_model, predict_proba
+    """Validación cruzada agrupada por vacante (ninguna vacante aparece en entrenamiento y prueba a la vez),
+    para cada uno de los algoritmos comparados."""
+    from app.models.train import CANDIDATES, fit_model, predict_proba
 
     df = pd.read_csv(csv_path)
-    f1s, aucs = [], []
-    for tr, te in GroupKFold(n_splits=n_splits).split(df, df["label"], df["vacancy_id"]):
-        vec, clf = fit_model(df.iloc[tr])
-        test = df.iloc[te]
-        proba = predict_proba(vec, clf, test["vacancy_text"].tolist(), test["candidate_text"].tolist())
-        f1s.append(f1_score(test["label"], (proba >= 0.5).astype(int), zero_division=0))
-        aucs.append(roc_auc_score(test["label"], proba))
-    return {"folds": n_splits, "f1_mean": round(float(np.mean(f1s)), 3), "f1_std": round(float(np.std(f1s)), 3),
-            "roc_auc_mean": round(float(np.mean(aucs)), 3)}
+    result = {}
+    for name in CANDIDATES:
+        f1s, aucs = [], []
+        for tr, te in GroupKFold(n_splits=n_splits).split(df, df["label"], df["vacancy_id"]):
+            vec, clf = fit_model(df.iloc[tr], name)
+            test = df.iloc[te]
+            proba = predict_proba(vec, clf, test["vacancy_text"].tolist(), test["candidate_text"].tolist())
+            f1s.append(f1_score(test["label"], (proba >= 0.5).astype(int), zero_division=0))
+            aucs.append(roc_auc_score(test["label"], proba))
+        result[name] = {"folds": n_splits, "f1_mean": round(float(np.mean(f1s)), 3),
+                        "f1_std": round(float(np.std(f1s)), 3), "roc_auc_mean": round(float(np.mean(aucs)), 3)}
+    return result
 
 
 if __name__ == "__main__":
