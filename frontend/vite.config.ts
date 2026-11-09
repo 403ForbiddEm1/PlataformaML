@@ -14,4 +14,10 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  // ESTO ES LO NUEVO: Evita que Vite busque en OneDrive
+  css: {
+    postcss: {
+      plugins: []
+    }
+  }
 })

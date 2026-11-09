@@ -1,4 +1,4 @@
-// backend/prisma/schema.prisma  (versión en español, completa)
+// backend/prisma/schema.prisma  (v4: v3 + desactivación de empresas, plantillas de notificación, chat)
 // Convención: modelos en PascalCase, campos en camelCase, sin tildes ni ñ.
 // Las tablas en PostgreSQL quedan en snake_case plural mediante @@map.
 
@@ -15,9 +15,24 @@ datasource db {
 // ==========================================
 
 enum Rol {
-  SUPER_ADMIN
-  ADMIN
-  CANDIDATO
+  SUPER_ADMIN // el equipo de la plataforma (sin empresa)
+  ADMIN // administrador de una empresa
+  RRHH // personal de una empresa (entra por invitación)
+  CANDIDATO // se registra solo (sin empresa)
+}
+
+enum EstadoEmpresa {
+  PENDIENTE_APROBACION
+  ACTIVA
+  SUSPENDIDA
+  RECHAZADA
+}
+
+// Por qué una empresa quedó SUSPENDIDA
+enum MotivoDesactivacion {
+  INACTIVIDAD // 3 meses sin publicar vacantes (automático)
+  VENCIMIENTO // llegó activaHasta (automático)
+  MANUAL // la suspendió un SUPER_ADMIN
 }
 
 enum NivelEducativo {
@@ -36,6 +51,18 @@ enum EstadoVacante {
   CERRADA
 }
 
+enum ModalidadTrabajo {
+  PRESENCIAL
+  REMOTO
+  HIBRIDO
+}
+
+enum TipoContrato {
+  TIEMPO_COMPLETO
+  MEDIO_TIEMPO
+  PASANTIA
+}
+
 enum EstadoPostulacion {
   RECIBIDA
   EN_REVISION
@@ -45,76 +72,223 @@ enum EstadoPostulacion {
   CONTRATADA
 }
 
+enum TipoDocumento {
+  CURRICULO
+  CEDULA
+}
+
+enum TipoToken {
+  RECUPERACION_CLAVE
+  VERIFICACION_CORREO
+}
+
 enum CanalNotificacion {
   CORREO
   WHATSAPP
+  APP // notificación interna que se ve dentro de la plataforma
 }
 
 enum EstadoNotificacion {
   PENDIENTE
   PROCESANDO
   ENVIADA
+  ENTREGADA // el webhook de WhatsApp confirmó la entrega
+  LEIDA // el webhook de WhatsApp confirmó la lectura
   FALLIDA
+}
+
+// Eventos que generan una notificación (y que tienen un texto por plantilla)
+enum EventoNotificacion {
+  POSTULACION_RECIBIDA
+  EN_REVISION
+  PRESELECCIONADA
+  ENTREVISTA_1
+  ENTREVISTA_2
+  CONTRATADA
+  RECHAZADA
+  MENSAJE_NUEVO
+}
+
+// Solo WhatsApp pasa por revisión de Meta; correo y APP son NO_APLICA
+enum EstadoAprobacionPlantilla {
+  NO_APLICA
+  PENDIENTE
+  APROBADA
+  RECHAZADA
 }
 
 // ==========================================
 // 1. EMPRESAS (MULTIEMPRESA)
+// Se registran solas y quedan PENDIENTE_APROBACION hasta que un SUPER_ADMIN
+// las apruebe. Una empresa SUSPENDIDA no puede iniciar sesión ni mostrar vacantes.
+// razonSocial, identificacionFiscal y correoContacto son obligatorios en el
+// registro (se validan con Zod); en la base quedan opcionales para poder
+// crear empresas desde el seed.
+// Desactivación: automática a los 3 meses sin vacantes (ultimaVacanteEn) o al
+// llegar activaHasta; manual desde el panel del SUPER_ADMIN.
 // ==========================================
 
 model Empresa {
-  id            String   @id @default(uuid()) @db.Uuid
-  nombre        String   @unique
-  dominio       String?  @unique
-  activa        Boolean  @default(true)
+  id                   String  @id @default(uuid()) @db.Uuid
+  nombre               String  @unique
+  razonSocial          String?
+  identificacionFiscal String? @unique
+  sector               String?
+  correoContacto       String?
+  telefonoContacto     String?
+  sitioWeb             String?
+  dominio              String? @unique
+
+  // Ubicación (para el filtro "más cerca")
+  direccion String?
+  latitud   Float?
+  longitud  Float?
+
+  estado        EstadoEmpresa @default(PENDIENTE_APROBACION)
+  motivoRechazo String?       @db.Text
+  aprobadaEn    DateTime?
+
+  // Vigencia y desactivación
+  activaHasta         DateTime? // null = sin vencimiento (el SUPER_ADMIN la fija, ej. por pago)
+  ultimaVacanteEn     DateTime? // última vez que se creó o abrió una vacante
+  desactivadaEn       DateTime?
+  motivoDesactivacion MotivoDesactivacion?
+
+  aprobadaPorId String?  @db.Uuid
+  aprobadaPor   Usuario? @relation("EmpresaAprobadaPor", fields: [aprobadaPorId], references: [id], onDelete: SetNull)
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
-  usuarios           Usuario[]
+  usuarios           Usuario[]              @relation("UsuariosEmpresa")
+  invitaciones       Invitacion[]
   vacantes           Vacante[]
   postulaciones      Postulacion[]
   notificaciones     Notificacion[]
   registrosAuditoria RegistroAuditoria[]
+  conjuntosDatos     ConjuntoDatos[]
+  plantillas         PlantillaNotificacion[]
+  conversaciones     Conversacion[]
+  lineaBase          LineaBaseProceso?
 
+  @@index([estado])
+  @@index([estado, ultimaVacanteEn])
+  @@index([estado, activaHasta])
   @@map("empresas")
+}
+
+// Valores "antes de la plataforma" para el reporte comparativo (RF11 / objetivo 6).
+// Se miden o se ingresan una vez; no se pueden calcular desde el sistema.
+model LineaBaseProceso {
+  id        String  @id @default(uuid()) @db.Uuid
+  empresaId String  @unique @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  tiempoFiltradoManualDias Float // ej. 4.8
+  precisionFiltradoManual  Float // ej. 42.0 (porcentaje)
+  satisfaccionReclutadores Float? // ej. 9.2 (sobre 10)
+
+  medidoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("linea_base_proceso")
+}
+
+// Un admin invita a una persona a su empresa (ADMIN o RRHH).
+// Se guarda solo el hash del token; el token real viaja por correo.
+model Invitacion {
+  id        String  @id @default(uuid()) @db.Uuid
+  empresaId String  @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  correo    String
+  rol       Rol // el servicio solo permite ADMIN o RRHH
+  tokenHash String    @unique
+  expiraEn  DateTime
+  usadaEn   DateTime?
+
+  invitadoPorId String?  @db.Uuid
+  invitadoPor   Usuario? @relation(fields: [invitadoPorId], references: [id], onDelete: SetNull)
+
+  creadoEn DateTime @default(now())
+
+  @@index([empresaId, correo])
+  @@map("invitaciones")
 }
 
 // ==========================================
 // 2. USUARIOS
-// ADMIN     -> empresaId obligatorio (validar con Zod)
-// CANDIDATO -> empresaId null (es global, puede postular a varias empresas)
+// SUPER_ADMIN / CANDIDATO -> empresaId null
+// ADMIN / RRHH            -> empresaId obligatorio
+// (esta regla se refuerza con un CHECK en una migración manual)
+// claveHash null = cuenta que solo entra con Google
 // ==========================================
 
 model Usuario {
-  id             String    @id @default(uuid()) @db.Uuid
-  correo         String    @unique
-  claveHash      String // hash (bcrypt/argon2), nunca texto plano
-  nombre         String
-  apellido       String
-  telefono       String?
-  rol            Rol       @default(CANDIDATO)
-  activo         Boolean   @default(true)
-  ultimoAccesoEn DateTime?
-  creadoEn       DateTime  @default(now())
-  actualizadoEn  DateTime  @updatedAt
+  id        String  @id @default(uuid()) @db.Uuid
+  correo    String  @unique
+  claveHash String? // hash (bcrypt/argon2), nunca texto plano
+  googleId  String? @unique
+  nombre    String
+  apellido  String
+  telefono  String? // formato E.164
+  fotoRuta  String? // ruta privada en el almacenamiento (no es una URL pública)
+  rol       Rol     @default(CANDIDATO)
+  activo    Boolean @default(true) // false = desactivado (soft delete)
+
+  correoVerificadoEn       DateTime?
+  aceptoTerminosEn         DateTime? // consentimiento de tratamiento de datos (RNF02)
+  consentimientoWhatsappEn DateTime? // sin esta fecha NO se envía WhatsApp
+  claveCambiadaEn          DateTime? // los tokens emitidos antes de esta fecha dejan de valer
+  intentosFallidos         Int       @default(0) // bloqueo por intentos de login
+  bloqueadoHasta           DateTime?
+  ultimoAccesoEn           DateTime?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
 
   empresaId String?  @db.Uuid
-  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  empresa   Empresa? @relation("UsuariosEmpresa", fields: [empresaId], references: [id], onDelete: Restrict)
 
-  perfilCandidato    PerfilCandidato?
-  postulaciones      Postulacion[]
-  vacantesCreadas    Vacante[]                    @relation("CreadorVacante")
-  cambiosDeEstado    HistorialEstadoPostulacion[]
-  notificaciones     Notificacion[]
-  registrosAuditoria RegistroAuditoria[]
+  perfilCandidato      PerfilCandidato?
+  postulaciones        Postulacion[]
+  vacantesCreadas      Vacante[]                    @relation("CreadorVacante")
+  cambiosDeEstado      HistorialEstadoPostulacion[]
+  notificaciones       Notificacion[]
+  registrosAuditoria   RegistroAuditoria[]
+  tokens               TokenUsuario[]
+  conjuntosDatos       ConjuntoDatos[]
+  empresasAprobadas    Empresa[]                    @relation("EmpresaAprobadaPor")
+  invitacionesEnviadas Invitacion[]
+  conversaciones       Conversacion[]               @relation("CandidatoConversacion")
+  mensajes             Mensaje[]                    @relation("AutorMensaje")
 
   @@index([empresaId, rol])
   @@map("usuarios")
 }
 
+// Verificar el correo y recuperar la clave.
+// Se guarda solo el hash del token; el token real viaja por correo.
+model TokenUsuario {
+  id        String  @id @default(uuid()) @db.Uuid
+  usuarioId String  @db.Uuid
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tipo      TipoToken
+  tokenHash String    @unique
+  expiraEn  DateTime
+  usadoEn   DateTime?
+
+  creadoEn DateTime @default(now())
+
+  @@index([usuarioId, tipo])
+  @@map("tokens_usuario")
+}
+
 // ==========================================
 // 3. PERFIL DEL CANDIDATO (variables para ML)
 // Pertenece a la persona, no a una empresa.
-// Cada empresa lo ve únicamente a través de Postulacion.
+// Cada empresa lo ve únicamente a través de una Postulacion.
 // ==========================================
 
 model PerfilCandidato {
@@ -122,12 +296,27 @@ model PerfilCandidato {
   usuarioId String  @unique @db.Uuid
   usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
-  urlCurriculo     String?
-  textoExtraido    String?         @db.Text
-  aniosExperiencia Int             @default(0)
-  nivelEducativo   NivelEducativo?
+  titulo    String? // ej. "Analista de Datos & Especialista en BI"
+  biografia String? @db.Text
+  ubicacion String?
+
+  // Dato sensible: nunca se devuelve a terceros salvo a RRHH/ADMIN de una empresa
+  // a la que el candidato se postuló, con registro de consulta en auditoría.
+  cedulaNumero String?
+
+  // Si es true, las empresas podrán descubrir el perfil (fase de ofertas directas).
+  // Por defecto el perfil solo se ve a través de una postulación.
+  perfilVisible Boolean @default(false)
+
+  textoExtraido    String?         @db.Text // texto del CV vigente (para NLP)
+  aniosExperiencia Int             @default(0) // derivado de experiencia[]; lo recalcula el servicio
+  nivelEducativo   NivelEducativo? // derivado de educacion[]; lo recalcula el servicio
   habilidades      String[]
   idiomas          String[]
+
+  educacion   EducacionCandidato[]
+  experiencia ExperienciaCandidato[]
+  documentos  DocumentoCandidato[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -136,10 +325,72 @@ model PerfilCandidato {
   @@map("perfiles_candidato")
 }
 
+model EducacionCandidato {
+  id       String          @id @default(uuid()) @db.Uuid
+  perfilId String          @db.Uuid
+  perfil   PerfilCandidato @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  institucion    String
+  titulo         String
+  anioGraduacion Int?
+
+  creadoEn DateTime @default(now())
+
+  @@index([perfilId])
+  @@map("educacion_candidato")
+}
+
+model ExperienciaCandidato {
+  id       String          @id @default(uuid()) @db.Uuid
+  perfilId String          @db.Uuid
+  perfil   PerfilCandidato @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  empresa     String
+  cargo       String
+  anioInicio  Int
+  anioFin     Int? // null = "Presente"
+  descripcion String? @db.Text
+
+  creadoEn DateTime @default(now())
+
+  @@index([perfilId])
+  @@map("experiencia_candidato")
+}
+
+// CV y cédula del candidato: se suben una vez al perfil.
+// Al reemplazar un documento, el anterior pasa a vigente = false (no se borra),
+// porque las postulaciones antiguas siguen apuntando a esa versión.
+// La cédula es un dato sensible: guardarla fuera de carpetas públicas y
+// entregarla solo por un endpoint autenticado, únicamente al RRHH/ADMIN de
+// la empresa a la que el candidato se postuló.
+model DocumentoCandidato {
+  id       String          @id @default(uuid()) @db.Uuid
+  perfilId String          @db.Uuid
+  perfil   PerfilCandidato @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  tipo               TipoDocumento
+  nombreArchivo      String
+  rutaAlmacenamiento String
+  tipoMime           String
+  tamanioBytes       Int
+  vigente            Boolean       @default(true)
+
+  creadoEn DateTime @default(now())
+
+  postulacionesComoCurriculo Postulacion[] @relation("CurriculoPostulacion")
+  postulacionesComoCedula    Postulacion[] @relation("CedulaPostulacion")
+
+  @@index([perfilId, tipo, vigente])
+  @@map("documentos_candidato")
+}
+
 // ==========================================
 // 4. VACANTES
 // habilidadesRequeridas / aniosExperienciaMinimos / nivelEducativoMinimo
 // son las variables del lado de la vacante para el modelo de ML.
+// Visible para el público solo si estado = ABIERTA y la empresa está ACTIVA.
+// camposAdicionales: preguntas extra que la empresa suma al formulario,
+// ej. [{ "clave": "licencia", "etiqueta": "¿Tienes licencia?", "tipo": "texto", "obligatorio": true }]
 // ==========================================
 
 model Vacante {
@@ -149,10 +400,22 @@ model Vacante {
   ubicacion     String?
   rangoSalarial String?
 
-  requisitos              String          @db.Text
+  // Ubicación y clasificación (filtros del listado)
+  latitud         Float?
+  longitud        Float?
+  especializacion String? // carrera o área, ej. "Ingeniería de Software"
+
+  departamento     String           @default("General")
+  modalidad        ModalidadTrabajo @default(HIBRIDO)
+  tipoContrato     TipoContrato     @default(TIEMPO_COMPLETO)
+  cantidadVacantes Int              @default(1)
+
+  requisitos              String          @db.Text // un requisito por línea
   habilidadesRequeridas   String[]
   aniosExperienciaMinimos Int             @default(0)
   nivelEducativoMinimo    NivelEducativo?
+
+  camposAdicionales Json?
 
   estado      EstadoVacante @default(BORRADOR)
   publicadaEn DateTime?
@@ -173,17 +436,21 @@ model Vacante {
   @@unique([id, empresaId])
   @@index([empresaId, estado])
   @@index([empresaId, creadoEn])
+  @@index([estado, especializacion])
   @@map("vacantes")
 }
 
 // ==========================================
 // 5. POSTULACIONES
-// Un candidato puede postular a TODAS las vacantes,
-// pero solo UNA vez a cada una.
+// Requieren sesión iniciada. Un candidato puede postular a TODAS las
+// vacantes, pero solo UNA vez a cada una.
 // ==========================================
 
 model Postulacion {
   id String @id @default(uuid()) @db.Uuid
+
+  // Número corto para mostrar al usuario (ej. APP-0012) en vez del UUID
+  numero Int @unique @default(autoincrement())
 
   // empresaId desnormalizado a propósito: permite filtrar por empresa
   // sin JOIN, y la FK compuesta obliga a que coincida con la de la vacante.
@@ -196,6 +463,16 @@ model Postulacion {
   candidatoId String  @db.Uuid
   candidato   Usuario @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
 
+  // Versión de los documentos que el candidato tenía vigentes al postularse
+  curriculoId String?             @db.Uuid
+  curriculo   DocumentoCandidato? @relation("CurriculoPostulacion", fields: [curriculoId], references: [id], onDelete: SetNull)
+
+  cedulaId String?             @db.Uuid
+  cedula   DocumentoCandidato? @relation("CedulaPostulacion", fields: [cedulaId], references: [id], onDelete: SetNull)
+
+  // Respuestas del candidato a vacante.camposAdicionales
+  respuestasAdicionales Json?
+
   estado        EstadoPostulacion @default(RECIBIDA)
   postuladaEn   DateTime          @default(now())
   actualizadoEn DateTime          @updatedAt
@@ -203,6 +480,7 @@ model Postulacion {
   prediccionML       PrediccionML?
   historialDeEstados HistorialEstadoPostulacion[]
   notificaciones     Notificacion[]
+  conversacion       Conversacion?
 
   @@unique([vacanteId, candidatoId])
   @@index([empresaId, estado])
@@ -232,6 +510,9 @@ model HistorialEstadoPostulacion {
 
 // ==========================================
 // 6. PREDICCIONES DE ML
+// datosCrudosPrediccion guarda el desglose que muestra el front:
+// { experienceMatch, educationMatch, skillsMatch, matchingSkills[],
+//   missingSkills[], keyFactors[], explanation, fairnessChecked }
 // ==========================================
 
 model PrediccionML {
@@ -239,9 +520,9 @@ model PrediccionML {
   postulacionId String      @unique @db.Uuid
   postulacion   Postulacion @relation(fields: [postulacionId], references: [id], onDelete: Cascade)
 
-  puntajeAfinidad Float // 0.0 a 1.0
+  puntajeAfinidad Float // 0.0 a 1.0 (el backend lo entrega al front como 0-100)
   esApto          Boolean
-  versionModelo   String // ej. "random_forest_v1" (texto de respaldo)
+  versionModelo   String // ej. "logistic_regression_v1" (texto de respaldo)
 
   // Modelo exacto que generó la predicción (opcional por ahora)
   modeloId String?   @db.Uuid
@@ -260,7 +541,8 @@ model PrediccionML {
 }
 
 // ==========================================
-// 7. COLA DE NOTIFICACIONES (patrón Queue/Worker)
+// 7. NOTIFICACIONES
+// Cola (patrón Queue/Worker) + plantillas de texto.
 // ==========================================
 
 model Notificacion {
@@ -289,27 +571,116 @@ model Notificacion {
   enviadaEn        DateTime?
   registroError    String?            @db.Text
 
+  // Id del mensaje en el proveedor (WhatsApp/correo): permite que el webhook
+  // encuentre esta fila para marcarla como entregada o leída
+  idExterno String?
+
   creadoEn DateTime @default(now())
 
   // Consulta del worker: estado = PENDIENTE AND proximoIntentoEn <= now()
   @@index([estado, proximoIntentoEn])
   @@index([empresaId, creadoEn])
   @@index([usuarioId])
+  @@index([idExterno])
   @@map("notificaciones")
 }
 
+// Texto de cada notificación por empresa, evento y canal.
+// empresaId null = plantilla predeterminada de la plataforma.
+// Correo y APP: al editar se crea una versión nueva que queda activa al instante.
+// WhatsApp: cada versión nueva es una plantilla distinta en Meta (nombreExterno)
+// y solo se usa cuando estadoAprobacion = APROBADA; mientras tanto sigue la anterior.
+// Ojo: en PostgreSQL los NULL no chocan en un UNIQUE, así que la unicidad de las
+// predeterminadas (empresaId null) la garantiza el servicio y el seed.
+model PlantillaNotificacion {
+  id String @id @default(uuid()) @db.Uuid
+
+  empresaId String?  @db.Uuid
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  evento EventoNotificacion
+  canal  CanalNotificacion
+
+  asunto String?
+  cuerpo String  @db.Text // admite {{nombre}}, {{vacante}}, {{empresa}}, {{estado}}, {{enlace}}
+
+  version          Int                       @default(1)
+  estadoAprobacion EstadoAprobacionPlantilla @default(NO_APLICA)
+  nombreExterno    String? // nombre de la plantilla en Meta, ej. "estado_postulacion_v2"
+  activa           Boolean                   @default(true)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([empresaId, evento, canal, version])
+  @@index([evento, canal, activa])
+  @@map("plantillas_notificacion")
+}
+
 // ==========================================
-// 8. REGISTRO DE MODELOS DE ML
-// Una fila por modelo entrenado. Guarda con qué se entrenó y qué tan bien rindió.
+// 8. CHAT DENTRO DE LA APP
+// Una conversación por postulación: solo existe chat si hay una relación
+// real entre el candidato y la empresa (evita mensajes no solicitados).
+// Cualquier ADMIN/RRHH de la empresa puede leer y responder.
+// ==========================================
+
+model Conversacion {
+  id String @id @default(uuid()) @db.Uuid
+
+  empresaId String  @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  candidatoId String  @db.Uuid
+  candidato   Usuario @relation("CandidatoConversacion", fields: [candidatoId], references: [id], onDelete: Cascade)
+
+  postulacionId String?      @unique @db.Uuid
+  postulacion   Postulacion? @relation(fields: [postulacionId], references: [id], onDelete: SetNull)
+
+  ultimoMensajeEn DateTime  @default(now())
+  cerradaEn       DateTime? // cerrada: se puede leer pero no escribir
+
+  creadoEn DateTime @default(now())
+
+  mensajes Mensaje[]
+
+  @@index([empresaId, ultimoMensajeEn])
+  @@index([candidatoId, ultimoMensajeEn])
+  @@map("conversaciones")
+}
+
+model Mensaje {
+  id String @id @default(uuid()) @db.Uuid
+
+  conversacionId String       @db.Uuid
+  conversacion   Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+
+  // Quién lo escribió: el candidato o una persona concreta de la empresa
+  autorId String  @db.Uuid
+  autor   Usuario @relation("AutorMensaje", fields: [autorId], references: [id], onDelete: Restrict)
+
+  contenido String    @db.Text // máximo 2000 caracteres (se valida en Zod); se muestra como texto plano
+  leidoEn   DateTime? // lo marca el otro participante
+
+  creadoEn DateTime @default(now())
+
+  @@index([conversacionId, creadoEn])
+  @@map("mensajes")
+}
+
+// ==========================================
+// 9. MODELOS DE ML (globales, los administra el SUPER_ADMIN)
+// metricas guarda lo que muestra el panel (en porcentaje):
+// { accuracy, precision, recall, f1Score, isFairnessCompliant,
+//   trainingHistory: [{ epoch, accuracy, loss }] }
 // ==========================================
 
 model ModeloML {
   id        String @id @default(uuid()) @db.Uuid
-  nombre    String // ej. "random_forest"
+  nombre    String // ej. "logistic_regression"
   version   String // ej. "v1"
-  algoritmo String // ej. "RandomForestClassifier"
+  algoritmo String // ej. "LogisticRegression"
 
-  metricas           Json? // { "precision": 0.87, "sensibilidad": 0.81, "f1": 0.84, "auc": 0.91 }
+  metricas           Json?
   parametros         Json? // hiperparámetros usados
   totalEntrenamiento Int? // cantidad de registros usados para entrenar
   entrenadoEn        DateTime?
@@ -324,8 +695,28 @@ model ModeloML {
   @@map("modelos_ml")
 }
 
+// Archivos de entrenamiento subidos desde el panel de administración (RF12)
+model ConjuntoDatos {
+  id String @id @default(uuid()) @db.Uuid
+
+  empresaId String?  @db.Uuid
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  subidoPorId String?  @db.Uuid
+  subidoPor   Usuario? @relation(fields: [subidoPorId], references: [id], onDelete: SetNull)
+
+  nombreArchivo      String
+  rutaAlmacenamiento String
+  totalRegistros     Int
+
+  creadoEn DateTime @default(now())
+
+  @@index([empresaId, creadoEn])
+  @@map("conjuntos_datos")
+}
+
 // ==========================================
-// 9. AUDITORÍA
+// 10. AUDITORÍA (los "movimientos" que ve el SUPER_ADMIN)
 // Solo se inserta, nunca se edita ni se borra.
 // ==========================================
 
@@ -338,8 +729,8 @@ model RegistroAuditoria {
   usuarioId String?  @db.Uuid
   usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
 
-  accion    String // ej. "CAMBIO_ESTADO_POSTULACION", "VER_PERFIL_CANDIDATO"
-  entidad   String // ej. "Postulacion", "Vacante"
+  accion    String // ej. "EMPRESA_APROBADA", "CAMBIO_ESTADO_POSTULACION", "LOGIN_FALLIDO"
+  entidad   String // ej. "Empresa", "Postulacion", "Usuario"
   entidadId String? @db.Uuid
   detalle   Json? // datos del cambio (valor anterior y nuevo)
   ip        String?
@@ -349,5 +740,6 @@ model RegistroAuditoria {
   @@index([empresaId, creadoEn])
   @@index([usuarioId, creadoEn])
   @@index([entidad, entidadId])
+  @@index([accion, creadoEn])
   @@map("registro_auditoria")
 }

@@ -1,66 +1,38 @@
 // backend/prisma/seed.ts
-// Datos de prueba para desarrollo. Se puede ejecutar varias veces sin duplicar.
+// Datos de DEMOSTRACIÓN. Nunca ejecutar en producción (claves conocidas).
 import 'dotenv/config';
 import {
   PrismaClient,
   Rol,
+  EstadoEmpresa,
   NivelEducativo,
   EstadoVacante,
   EstadoPostulacion,
+  EstadoNotificacion,
+  TipoDocumento,
   CanalNotificacion,
-  type Vacante,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
+
+if (process.env.NODE_ENV === 'production') {
+  console.error('El seed de demostración no se puede ejecutar en producción.');
+  process.exit(1);
+}
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 });
 
-const CLAVE_DEMO = 'Password123!'; // solo para desarrollo
-
-// Afinidad simple: proporción de habilidades requeridas que tiene el candidato
-function afinidad(habilidades: string[], requeridas: string[]): number {
-  if (requeridas.length === 0) return 0;
-  const coincidencias = requeridas.filter((r) => habilidades.includes(r)).length;
-  return Number((coincidencias / requeridas.length).toFixed(2));
-}
-
-const empresasDemo = [
-  {
-    nombre: 'TechNova C.A.',
-    dominio: 'technova.test',
-    admin: 'admin@technova.test',
-    vacantes: [
-      { titulo: 'Desarrollador Backend', habilidades: ['Node', 'SQL', 'Docker'], anios: 2, nivel: NivelEducativo.LICENCIATURA },
-      { titulo: 'Analista de Datos', habilidades: ['Python', 'SQL', 'Excel'], anios: 1, nivel: NivelEducativo.LICENCIATURA },
-      { titulo: 'Desarrollador Frontend', habilidades: ['React', 'TypeScript', 'Git'], anios: 1, nivel: NivelEducativo.TECNICO },
-    ],
-  },
-  {
-    nombre: 'Zulia Logística',
-    dominio: 'zulialogistica.test',
-    admin: 'admin@zulialogistica.test',
-    vacantes: [
-      { titulo: 'Coordinador de Operaciones', habilidades: ['Excel', 'Liderazgo', 'Logística'], anios: 3, nivel: NivelEducativo.LICENCIATURA },
-      { titulo: 'Asistente Administrativo', habilidades: ['Excel', 'Atención al cliente'], anios: 0, nivel: NivelEducativo.BACHILLERATO },
-      { titulo: 'Analista de Inventario', habilidades: ['SQL', 'Excel', 'Logística'], anios: 2, nivel: NivelEducativo.TECNICO },
-    ],
-  },
-];
-
-const candidatosDemo = [
-  { correo: 'maria@candidato.test', nombre: 'María', apellido: 'Pérez', anios: 3, nivel: NivelEducativo.LICENCIATURA, habilidades: ['Node', 'SQL', 'Docker', 'Git'] },
-  { correo: 'jose@candidato.test', nombre: 'José', apellido: 'Rivas', anios: 1, nivel: NivelEducativo.TECNICO, habilidades: ['React', 'TypeScript', 'Git'] },
-  { correo: 'ana@candidato.test', nombre: 'Ana', apellido: 'Morales', anios: 4, nivel: NivelEducativo.MAESTRIA, habilidades: ['Python', 'SQL', 'Excel'] },
-  { correo: 'luis@candidato.test', nombre: 'Luis', apellido: 'Fernández', anios: 5, nivel: NivelEducativo.LICENCIATURA, habilidades: ['Excel', 'Liderazgo', 'Logística'] },
-  { correo: 'carla@candidato.test', nombre: 'Carla', apellido: 'Núñez', anios: 0, nivel: NivelEducativo.BACHILLERATO, habilidades: ['Excel', 'Atención al cliente'] },
-];
+const CLAVE_DEMO = 'Password123!';
+const VACANTE_DEMO_ID = '00000000-0000-4000-8000-000000000001';
 
 async function main() {
+  console.log('Iniciando seed v3...');
+  const ahora = new Date();
   const claveHash = await bcrypt.hash(CLAVE_DEMO, 10);
 
-  // 1. Modelo de ML activo
+  // 1. Modelo de ML activo (formato que lee el panel: porcentajes)
   const modelo = await prisma.modeloML.upsert({
     where: { nombre_version: { nombre: 'random_forest', version: 'v1' } },
     update: {},
@@ -68,15 +40,26 @@ async function main() {
       nombre: 'random_forest',
       version: 'v1',
       algoritmo: 'RandomForestClassifier',
-      metricas: { precision: 0.87, sensibilidad: 0.81, f1: 0.84, auc: 0.91 },
+      metricas: {
+        accuracy: 86,
+        precision: 87,
+        recall: 81,
+        f1Score: 84,
+        isFairnessCompliant: true,
+        trainingHistory: [
+          { epoch: 1, accuracy: 70, loss: 0.62 },
+          { epoch: 2, accuracy: 79, loss: 0.45 },
+          { epoch: 3, accuracy: 86, loss: 0.33 },
+        ],
+      },
       totalEntrenamiento: 1000,
-      entrenadoEn: new Date(),
+      entrenadoEn: ahora,
       activo: true,
     },
   });
 
-  // 2. Super administrador (sin empresa)
-  await prisma.usuario.upsert({
+  // 2. Super administrador (equipo de la plataforma, sin empresa)
+  const superAdmin = await prisma.usuario.upsert({
     where: { correo: 'superadmin@plataforma.test' },
     update: {},
     create: {
@@ -85,139 +68,275 @@ async function main() {
       nombre: 'Super',
       apellido: 'Admin',
       rol: Rol.SUPER_ADMIN,
+      correoVerificadoEn: ahora,
+      aceptoTerminosEn: ahora,
     },
   });
 
-  // 3. Empresas, administradores y vacantes
-  const vacantes: Array<Vacante & { habilidadesRequeridas: string[] }> = [];
+  // 3. Empresa ACTIVA (aprobada por el super admin)
+  const empresa = await prisma.empresa.upsert({
+    where: { nombre: 'TechNova C.A.' },
+    update: {},
+    create: {
+      nombre: 'TechNova C.A.',
+      razonSocial: 'TechNova Compañía Anónima',
+      identificacionFiscal: 'J-12345678-9',
+      correoContacto: 'contacto@technova.test',
+      estado: EstadoEmpresa.ACTIVA,
+      aprobadaPorId: superAdmin.id,
+      aprobadaEn: ahora,
+    },
+  });
 
-  for (const e of empresasDemo) {
-    const empresa = await prisma.empresa.upsert({
-      where: { nombre: e.nombre },
-      update: {},
-      create: { nombre: e.nombre, dominio: e.dominio },
-    });
+  // 3b. Empresa PENDIENTE (para probar el flujo de aprobación del super admin)
+  const empresaPendiente = await prisma.empresa.upsert({
+    where: { nombre: 'Distribuidora Andina C.A.' },
+    update: {},
+    create: {
+      nombre: 'Distribuidora Andina C.A.',
+      razonSocial: 'Distribuidora Andina Compañía Anónima',
+      identificacionFiscal: 'J-98765432-1',
+      correoContacto: 'contacto@andina.test',
+      estado: EstadoEmpresa.PENDIENTE_APROBACION,
+    },
+  });
 
-    const admin = await prisma.usuario.upsert({
-      where: { correo: e.admin },
-      update: {},
-      create: {
-        correo: e.admin,
-        claveHash,
-        nombre: 'Admin',
-        apellido: e.nombre,
-        rol: Rol.ADMIN,
+  await prisma.usuario.upsert({
+    where: { correo: 'admin@andina.test' },
+    update: {},
+    create: {
+      correo: 'admin@andina.test',
+      claveHash,
+      nombre: 'Luis',
+      apellido: 'Rivas',
+      rol: Rol.ADMIN,
+      empresaId: empresaPendiente.id,
+      correoVerificadoEn: ahora,
+      aceptoTerminosEn: ahora,
+    },
+  });
+
+  // 3c. Línea base "antes de la plataforma" (reporte comparativo)
+  await prisma.lineaBaseProceso.upsert({
+    where: { empresaId: empresa.id },
+    update: {},
+    create: {
+      empresaId: empresa.id,
+      tiempoFiltradoManualDias: 4.8,
+      precisionFiltradoManual: 42.0,
+      satisfaccionReclutadores: 9.2,
+    },
+  });
+
+  // 4. Admin de la empresa
+  const admin = await prisma.usuario.upsert({
+    where: { correo: 'admin@technova.test' },
+    update: {},
+    create: {
+      correo: 'admin@technova.test',
+      claveHash,
+      nombre: 'Ana',
+      apellido: 'Gómez',
+      rol: Rol.ADMIN,
+      empresaId: empresa.id,
+      correoVerificadoEn: ahora,
+      aceptoTerminosEn: ahora,
+    },
+  });
+
+  // 5. Personal de RRHH
+  await prisma.usuario.upsert({
+    where: { correo: 'rrhh@technova.test' },
+    update: {},
+    create: {
+      correo: 'rrhh@technova.test',
+      claveHash,
+      nombre: 'Carlos',
+      apellido: 'Arismendi',
+      rol: Rol.RRHH,
+      empresaId: empresa.id,
+      correoVerificadoEn: ahora,
+      aceptoTerminosEn: ahora,
+    },
+  });
+
+  // 6. Candidato con perfil, educación, experiencia y documentos
+  //    (aniosExperiencia y nivelEducativo coinciden con experiencia[] y educacion[])
+  const candidato = await prisma.usuario.upsert({
+    where: { correo: 'maria@candidato.test' },
+    update: {},
+    create: {
+      correo: 'maria@candidato.test',
+      claveHash,
+      nombre: 'María',
+      apellido: 'Pérez',
+      rol: Rol.CANDIDATO,
+      correoVerificadoEn: ahora,
+      aceptoTerminosEn: ahora,
+      perfilCandidato: {
+        create: {
+          titulo: 'Desarrolladora Backend',
+          ubicacion: 'Maracaibo, Zulia',
+          aniosExperiencia: 3,
+          nivelEducativo: NivelEducativo.LICENCIATURA,
+          habilidades: ['Node', 'SQL', 'Docker', 'Git'],
+          idiomas: ['Español', 'Inglés'],
+          educacion: {
+            create: [
+              {
+                institucion: 'Universidad de ejemplo',
+                titulo: 'Licenciatura en Informática',
+                anioGraduacion: 2022,
+              },
+            ],
+          },
+          experiencia: {
+            create: [
+              {
+                empresa: 'Soluciones Zulia',
+                cargo: 'Desarrolladora Backend',
+                anioInicio: 2023,
+                anioFin: null,
+                descripcion: 'APIs REST con Node.js y PostgreSQL.',
+              },
+            ],
+          },
+          documentos: {
+            create: [
+              {
+                tipo: TipoDocumento.CURRICULO,
+                nombreArchivo: 'CV_Maria.pdf',
+                rutaAlmacenamiento: 'storage/private/cv/cv_maria.pdf',
+                tipoMime: 'application/pdf',
+                tamanioBytes: 102400,
+              },
+              {
+                tipo: TipoDocumento.CEDULA,
+                nombreArchivo: 'Cedula_Maria.pdf',
+                rutaAlmacenamiento: 'storage/private/cedulas/cedula_maria.pdf',
+                tipoMime: 'application/pdf',
+                tamanioBytes: 51200,
+              },
+            ],
+          },
+        },
+      },
+    },
+    include: { perfilCandidato: { include: { documentos: true } } },
+  });
+
+  const documentos = candidato.perfilCandidato?.documentos ?? [];
+  const cvId = documentos.find((d) => d.tipo === TipoDocumento.CURRICULO)?.id;
+  const cedulaId = documentos.find((d) => d.tipo === TipoDocumento.CEDULA)?.id;
+
+  // 7. Vacante
+  const vacante = await prisma.vacante.upsert({
+    where: { id: VACANTE_DEMO_ID },
+    update: {},
+    create: {
+      id: VACANTE_DEMO_ID,
+      titulo: 'Desarrollador Backend',
+      descripcion: 'Se busca Desarrollador Backend para TechNova.',
+      requisitos: 'Experiencia mínima de 2 años\nConocimiento de Node.js y SQL',
+      ubicacion: 'Maracaibo, Zulia',
+      habilidadesRequeridas: ['Node', 'SQL', 'Docker'],
+      aniosExperienciaMinimos: 2,
+      nivelEducativoMinimo: NivelEducativo.LICENCIATURA,
+      estado: EstadoVacante.ABIERTA,
+      publicadaEn: ahora,
+      empresaId: empresa.id,
+      creadaPorId: admin.id,
+    },
+  });
+
+  // 8. Postulación con predicción de ML, historial y notificación
+  const postulacion = await prisma.postulacion.upsert({
+    where: { vacanteId_candidatoId: { vacanteId: vacante.id, candidatoId: candidato.id } },
+    update: {},
+    create: {
+      empresaId: empresa.id,
+      vacanteId: vacante.id,
+      candidatoId: candidato.id,
+      curriculoId: cvId,
+      cedulaId: cedulaId,
+      estado: EstadoPostulacion.RECIBIDA,
+      prediccionML: {
+        create: {
+          puntajeAfinidad: 0.94,
+          esApto: true,
+          versionModelo: 'random_forest_v1',
+          modeloId: modelo.id,
+          datosEntrada: {
+            aniosExperiencia: 3,
+            nivelEducativo: 'LICENCIATURA',
+            habilidades: ['Node', 'SQL', 'Docker', 'Git'],
+          },
+          datosCrudosPrediccion: {
+            experienceMatch: 95,
+            educationMatch: 92,
+            skillsMatch: 96,
+            matchingSkills: ['Node', 'SQL', 'Docker'],
+            missingSkills: [],
+            keyFactors: [
+              'Supera los 2 años de experiencia mínima',
+              'Cumple el nivel educativo requerido',
+              'Domina las 3 habilidades requeridas',
+            ],
+            explanation: 'Perfil con alta afinidad con los requisitos de la vacante.',
+            fairnessChecked: true,
+          },
+        },
+      },
+      historialDeEstados: {
+        create: {
+          estadoNuevo: EstadoPostulacion.RECIBIDA,
+          nota: 'Postulación recibida en el sistema',
+        },
+      },
+      notificaciones: {
+        create: {
+          empresaId: empresa.id,
+          usuarioId: candidato.id,
+          canal: CanalNotificacion.CORREO,
+          tipo: 'POSTULACION_RECIBIDA',
+          destinatario: 'maria@candidato.test',
+          asunto: 'Recibimos tu postulación',
+          mensaje: 'Hola María, recibimos tu postulación a Desarrollador Backend.',
+          // ya "enviada": evita que el worker intente mandar correo a una dirección de prueba
+          estado: EstadoNotificacion.ENVIADA,
+          intentos: 1,
+          enviadaEn: ahora,
+        },
+      },
+    },
+  });
+
+  // 9. Auditoría (solo si no existe ya, para que el seed se pueda repetir)
+  const yaAuditada = await prisma.registroAuditoria.findFirst({
+    where: { accion: 'POSTULACION_CREADA', entidadId: postulacion.id },
+  });
+  if (!yaAuditada) {
+    await prisma.registroAuditoria.create({
+      data: {
         empresaId: empresa.id,
-      },
-    });
-
-    for (const v of e.vacantes) {
-      const existente = await prisma.vacante.findFirst({
-        where: { empresaId: empresa.id, titulo: v.titulo },
-      });
-
-      const vacante =
-        existente ??
-        (await prisma.vacante.create({
-          data: {
-            titulo: v.titulo,
-            descripcion: `Se busca ${v.titulo} para ${e.nombre}.`,
-            requisitos: `Experiencia mínima de ${v.anios} año(s).`,
-            ubicacion: 'Maracaibo, Zulia',
-            habilidadesRequeridas: v.habilidades,
-            aniosExperienciaMinimos: v.anios,
-            nivelEducativoMinimo: v.nivel,
-            estado: EstadoVacante.ABIERTA,
-            publicadaEn: new Date(),
-            empresaId: empresa.id,
-            creadaPorId: admin.id,
-          },
-        }));
-
-      vacantes.push(vacante);
-    }
-  }
-
-  // 4. Candidatos con su perfil
-  const candidatos = [];
-  for (const c of candidatosDemo) {
-    const usuario = await prisma.usuario.upsert({
-      where: { correo: c.correo },
-      update: {},
-      create: {
-        correo: c.correo,
-        claveHash,
-        nombre: c.nombre,
-        apellido: c.apellido,
-        rol: Rol.CANDIDATO,
-        perfilCandidato: {
-          create: {
-            aniosExperiencia: c.anios,
-            nivelEducativo: c.nivel,
-            habilidades: c.habilidades,
-            idiomas: ['Español', 'Inglés'],
-          },
-        },
-      },
-    });
-    candidatos.push({ usuario, datos: c });
-  }
-
-  // 5. Postulaciones [índice de candidato, índice de vacante]
-  // Vacantes 0-2 son de TechNova, 3-5 de Zulia Logística
-  const pares: Array<[number, number]> = [
-    [0, 0], [1, 0], [2, 0], [3, 0],
-    [0, 1], [2, 1],
-    [1, 2],
-    [3, 3], [4, 3],
-    [4, 4], [3, 5],
-  ];
-
-  for (const [ic, iv] of pares) {
-    const { usuario, datos } = candidatos[ic];
-    const vacante = vacantes[iv];
-    const puntaje = afinidad(datos.habilidades, vacante.habilidadesRequeridas);
-
-    await prisma.postulacion.upsert({
-      where: { vacanteId_candidatoId: { vacanteId: vacante.id, candidatoId: usuario.id } },
-      update: {},
-      create: {
-        empresaId: vacante.empresaId,
-        vacanteId: vacante.id,
-        candidatoId: usuario.id,
-        prediccionML: {
-          create: {
-            puntajeAfinidad: puntaje,
-            esApto: puntaje >= 0.6,
-            versionModelo: 'random_forest_v1',
-            modeloId: modelo.id,
-            datosEntrada: {
-              habilidades: datos.habilidades,
-              aniosExperiencia: datos.anios,
-              nivelEducativo: datos.nivel,
-            },
-          },
-        },
-        historialDeEstados: {
-          create: { estadoNuevo: EstadoPostulacion.RECIBIDA, nota: 'Postulación recibida' },
-        },
-        notificaciones: {
-          create: {
-            empresaId: vacante.empresaId,
-            usuarioId: usuario.id,
-            canal: CanalNotificacion.CORREO,
-            tipo: 'POSTULACION_RECIBIDA',
-            destinatario: datos.correo,
-            asunto: 'Recibimos tu postulación',
-            mensaje: `Hola ${datos.nombre}, recibimos tu postulación a "${vacante.titulo}".`,
-          },
-        },
+        usuarioId: candidato.id,
+        accion: 'POSTULACION_CREADA',
+        entidad: 'Postulacion',
+        entidadId: postulacion.id,
+        detalle: { vacante: vacante.titulo },
       },
     });
   }
 
-  console.log('Seed completado.');
-  console.log(`Clave de todos los usuarios de prueba: ${CLAVE_DEMO}`);
+  console.log('Seed v3 completado.');
+  console.log('--------------------------------------------------');
+  console.log(`Clave para todos: ${CLAVE_DEMO}`);
+  console.log('SuperAdmin:      superadmin@plataforma.test');
+  console.log('Admin empresa:   admin@technova.test');
+  console.log('RRHH:            rrhh@technova.test');
+  console.log('Candidato:       maria@candidato.test');
+  console.log('Empresa pendiente (admin): admin@andina.test');
+  console.log('--------------------------------------------------');
 }
 
 main()
