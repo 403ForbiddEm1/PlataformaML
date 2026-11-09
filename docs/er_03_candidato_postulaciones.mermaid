@@ -1,0 +1,114 @@
+erDiagram
+    usuarios ||--o| perfiles_candidato : "tiene"
+    perfiles_candidato ||--o{ educacion_candidato : "incluye"
+    perfiles_candidato ||--o{ experiencia_candidato : "incluye"
+    perfiles_candidato ||--o{ documentos_candidato : "guarda"
+    usuarios ||--o{ postulaciones : "se postula"
+    vacantes ||--o{ postulaciones : "recibe"
+    documentos_candidato |o--o{ postulaciones : "curriculo"
+    documentos_candidato |o--o{ postulaciones : "cedula"
+    postulaciones ||--o{ historial_estado_postulacion : "registra"
+    usuarios |o--o{ historial_estado_postulacion : "cambia"
+    postulaciones ||--o| predicciones_ml : "genera"
+    modelos_ml |o--o{ predicciones_ml : "produce"
+
+    usuarios {
+        uuid id PK
+        string correo UK
+        Rol rol
+    }
+    vacantes {
+        uuid id PK
+        string titulo
+        uuid empresaId FK
+    }
+    perfiles_candidato {
+        uuid id PK
+        uuid usuarioId FK, UK
+        string titulo
+        text biografia
+        string ubicacion
+        string cedulaNumero
+        boolean perfilVisible
+        text textoExtraido
+        int aniosExperiencia
+        NivelEducativo nivelEducativo
+        string[] habilidades
+        string[] idiomas
+        timestamp creadoEn
+        timestamp actualizadoEn
+    }
+    educacion_candidato {
+        uuid id PK
+        uuid perfilId FK
+        string institucion
+        string titulo
+        int anioGraduacion
+        timestamp creadoEn
+    }
+    experiencia_candidato {
+        uuid id PK
+        uuid perfilId FK
+        string empresa
+        string cargo
+        int anioInicio
+        int anioFin
+        text descripcion
+        timestamp creadoEn
+    }
+    documentos_candidato {
+        uuid id PK
+        uuid perfilId FK
+        TipoDocumento tipo
+        string nombreArchivo
+        string rutaAlmacenamiento
+        string tipoMime
+        int tamanioBytes
+        boolean vigente
+        timestamp creadoEn
+    }
+    postulaciones {
+        uuid id PK
+        int numero UK
+        uuid empresaId FK
+        uuid vacanteId FK
+        uuid candidatoId FK
+        uuid curriculoId FK
+        uuid cedulaId FK
+        json respuestasAdicionales
+        EstadoPostulacion estado
+        timestamp postuladaEn
+        timestamp actualizadoEn
+    }
+    historial_estado_postulacion {
+        uuid id PK
+        uuid postulacionId FK
+        EstadoPostulacion estadoAnterior
+        EstadoPostulacion estadoNuevo
+        text nota
+        uuid cambiadoPorId FK
+        timestamp creadoEn
+    }
+    predicciones_ml {
+        uuid id PK
+        uuid postulacionId FK, UK
+        float puntajeAfinidad
+        boolean esApto
+        string versionModelo
+        uuid modeloId FK
+        json datosEntrada
+        json datosCrudosPrediccion
+        timestamp creadoEn
+    }
+    modelos_ml {
+        uuid id PK
+        string nombre
+        string version
+        string algoritmo
+        json metricas
+        json parametros
+        int totalEntrenamiento
+        timestamp entrenadoEn
+        boolean activo
+        timestamp creadoEn
+    }

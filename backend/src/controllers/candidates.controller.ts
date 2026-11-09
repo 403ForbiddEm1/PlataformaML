@@ -6,7 +6,7 @@ import { updateCandidateProfileSchema } from '../validators/candidate.validator'
 import { CandidateProfileResponse } from '../types';
 import { TipoDocumento, Rol } from '@prisma/client';
 import { storageService } from '../services/storage.service';
-import path from 'path';
+import { auditService } from '../services/audit.service';
 
 export const candidatesController = {
   async getProfile(req: Request, res: Response, next: NextFunction) {
@@ -132,6 +132,8 @@ export const candidatesController = {
       if (body.title !== undefined) updateData.titulo = body.title;
       if (body.bio !== undefined) updateData.biografia = body.bio;
       if (body.location !== undefined) updateData.ubicacion = body.location;
+      if (body.cedulaNumero !== undefined) updateData.cedulaNumero = body.cedulaNumero;
+      if (body.perfilVisible !== undefined) updateData.perfilVisible = body.perfilVisible;
       if (body.skills !== undefined) updateData.habilidades = body.skills;
       if (body.experience !== undefined) updateData.aniosExperiencia = totalExperienceYears;
 
@@ -146,7 +148,7 @@ export const candidatesController = {
         await prisma.educacionCandidato.createMany({
           data: body.education.map((e) => ({
             perfilId: perfil!.id,
-            institucion: e.institucion,
+            institucion: e.institution,
             titulo: e.degree,
             anioGraduacion: e.graduationYear ? parseInt(String(e.graduationYear)) : null,
           })),
@@ -235,7 +237,7 @@ export const candidatesController = {
       const user = req.user;
       if (!user) throw new HttpError(401, 'No autenticado');
 
-      const { id } = req.params;
+      const id = req.params.id as string;
       const documento = await prisma.documentoCandidato.findUnique({
         where: { id },
         include: {
@@ -266,7 +268,19 @@ export const candidatesController = {
       }
 
       if (!esPropietario && !esSuperAdmin && !esEmpresaDestino) {
-        throw new HttpError(403, 'Acceso denegado a este documento');
+        throw new HttpError(404, 'Documento no encontrado');
+      }
+
+      if (documento.tipo === TipoDocumento.CEDULA && !esPropietario) {
+        await auditService.log({
+          usuarioId: user.id,
+          empresaId: user.empresaId,
+          accion: 'DOCUMENTO_CEDULA_CONSULTADA',
+          entidad: 'DocumentoCandidato',
+          entidadId: documento.id,
+          detalle: { candidatoId: documento.perfil.usuarioId },
+          ip: req.ip as string | undefined,
+        });
       }
 
       const filePath = storageService.resolvePath(documento.rutaAlmacenamiento);
@@ -275,6 +289,36 @@ export const candidatesController = {
       }
 
       res.download(filePath, documento.nombreArchivo);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async uploadPhoto(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new HttpError(401, 'No autenticado');
+      const file = req.file;
+      if (!file) throw new HttpError(400, 'No se adjuntó ninguna imagen');
+
+      const usuario = await prisma.usuario.findUnique({
+        where: { id: userId },
+        select: { fotoRuta: true },
+      });
+
+      if (usuario?.fotoRuta) {
+        await storageService.deleteFile(usuario.fotoRuta);
+      }
+
+      await prisma.usuario.update({
+        where: { id: userId },
+        data: { fotoRuta: file.filename },
+      });
+
+      res.json({
+        success: true,
+        data: { fotoRuta: file.filename },
+      });
     } catch (err) {
       next(err);
     }

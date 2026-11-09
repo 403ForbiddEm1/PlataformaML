@@ -1,0 +1,100 @@
+erDiagram
+    empresas |o--o{ notificaciones : "envia"
+    usuarios ||--o{ notificaciones : "recibe"
+    postulaciones |o--o{ notificaciones : "origina"
+    empresas |o--o{ plantillas_notificacion : "personaliza"
+    empresas ||--o{ conversaciones : "participa"
+    usuarios ||--o{ conversaciones : "participa"
+    postulaciones |o--o| conversaciones : "abre"
+    conversaciones ||--o{ mensajes : "contiene"
+    usuarios ||--o{ mensajes : "escribe"
+    empresas |o--o{ conjuntos_datos : "aporta"
+    usuarios |o--o{ conjuntos_datos : "sube"
+    empresas |o--o{ registro_auditoria : "origina"
+    usuarios |o--o{ registro_auditoria : "realiza"
+
+    empresas {
+        uuid id PK
+        string nombre UK
+    }
+    usuarios {
+        uuid id PK
+        string correo UK
+        Rol rol
+    }
+    postulaciones {
+        uuid id PK
+        int numero UK
+        EstadoPostulacion estado
+    }
+    notificaciones {
+        uuid id PK
+        uuid empresaId FK
+        uuid usuarioId FK
+        uuid postulacionId FK
+        CanalNotificacion canal
+        string tipo
+        string destinatario
+        string asunto
+        text mensaje
+        EstadoNotificacion estado
+        int intentos
+        int maxIntentos
+        timestamp proximoIntentoEn
+        timestamp bloqueadaEn
+        timestamp enviadaEn
+        text registroError
+        string idExterno
+        timestamp creadoEn
+    }
+    plantillas_notificacion {
+        uuid id PK
+        uuid empresaId FK
+        EventoNotificacion evento
+        CanalNotificacion canal
+        string asunto
+        text cuerpo
+        int version
+        EstadoAprobacionPlantilla estadoAprobacion
+        string nombreExterno
+        boolean activa
+        timestamp creadoEn
+        timestamp actualizadoEn
+    }
+    conversaciones {
+        uuid id PK
+        uuid empresaId FK
+        uuid candidatoId FK
+        uuid postulacionId FK, UK
+        timestamp ultimoMensajeEn
+        timestamp cerradaEn
+        timestamp creadoEn
+    }
+    mensajes {
+        uuid id PK
+        uuid conversacionId FK
+        uuid autorId FK
+        text contenido
+        timestamp leidoEn
+        timestamp creadoEn
+    }
+    conjuntos_datos {
+        uuid id PK
+        uuid empresaId FK
+        uuid subidoPorId FK
+        string nombreArchivo
+        string rutaAlmacenamiento
+        int totalRegistros
+        timestamp creadoEn
+    }
+    registro_auditoria {
+        uuid id PK
+        uuid empresaId FK
+        uuid usuarioId FK
+        string accion
+        string entidad
+        uuid entidadId
+        json detalle
+        string ip
+        timestamp creadoEn
+    }

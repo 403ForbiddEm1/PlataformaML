@@ -1,0 +1,179 @@
+erDiagram
+    empresas |o--o{ usuarios : "agrupa"
+    usuarios |o--o{ empresas : "aprueba"
+    empresas ||--o{ invitaciones : "emite"
+    usuarios |o--o{ invitaciones : "invita"
+    empresas ||--o| linea_base_proceso : "mide"
+    usuarios ||--o{ tokens_usuario : "genera"
+    usuarios ||--o| perfiles_candidato : "tiene"
+    perfiles_candidato ||--o{ educacion_candidato : "incluye"
+    perfiles_candidato ||--o{ experiencia_candidato : "incluye"
+    perfiles_candidato ||--o{ documentos_candidato : "guarda"
+    empresas ||--o{ vacantes : "publica"
+    usuarios ||--o{ vacantes : "crea"
+    empresas ||--o{ postulaciones : "recibe"
+    vacantes ||--o{ postulaciones : "recibe"
+    usuarios ||--o{ postulaciones : "se postula"
+    documentos_candidato |o--o{ postulaciones : "curriculo"
+    documentos_candidato |o--o{ postulaciones : "cedula"
+    postulaciones ||--o{ historial_estado_postulacion : "registra"
+    usuarios |o--o{ historial_estado_postulacion : "cambia"
+    postulaciones ||--o| predicciones_ml : "genera"
+    modelos_ml |o--o{ predicciones_ml : "produce"
+    postulaciones |o--o{ notificaciones : "origina"
+    usuarios ||--o{ notificaciones : "recibe"
+    empresas |o--o{ notificaciones : "envia"
+    empresas |o--o{ plantillas_notificacion : "personaliza"
+    postulaciones |o--o| conversaciones : "abre"
+    empresas ||--o{ conversaciones : "participa"
+    usuarios ||--o{ conversaciones : "participa"
+    conversaciones ||--o{ mensajes : "contiene"
+    usuarios ||--o{ mensajes : "escribe"
+    usuarios |o--o{ conjuntos_datos : "sube"
+    empresas |o--o{ conjuntos_datos : "aporta"
+    empresas |o--o{ registro_auditoria : "origina"
+    usuarios |o--o{ registro_auditoria : "realiza"
+
+    empresas {
+        uuid id PK
+        string nombre UK
+        string identificacionFiscal UK
+        EstadoEmpresa estado
+        timestamp activaHasta
+        timestamp ultimaVacanteEn
+        uuid aprobadaPorId FK
+    }
+    usuarios {
+        uuid id PK
+        string correo UK
+        string googleId UK
+        string nombre
+        string apellido
+        Rol rol
+        boolean activo
+        uuid empresaId FK
+    }
+    invitaciones {
+        uuid id PK
+        uuid empresaId FK
+        string correo
+        Rol rol
+        string tokenHash UK
+        uuid invitadoPorId FK
+    }
+    linea_base_proceso {
+        uuid id PK
+        uuid empresaId FK, UK
+        float tiempoFiltradoManualDias
+        float precisionFiltradoManual
+    }
+    tokens_usuario {
+        uuid id PK
+        uuid usuarioId FK
+        TipoToken tipo
+        string tokenHash UK
+        timestamp expiraEn
+    }
+    perfiles_candidato {
+        uuid id PK
+        uuid usuarioId FK, UK
+        string cedulaNumero
+        boolean perfilVisible
+        int aniosExperiencia
+        NivelEducativo nivelEducativo
+    }
+    educacion_candidato {
+        uuid id PK
+        uuid perfilId FK
+        string institucion
+        string titulo
+    }
+    experiencia_candidato {
+        uuid id PK
+        uuid perfilId FK
+        string empresa
+        string cargo
+    }
+    documentos_candidato {
+        uuid id PK
+        uuid perfilId FK
+        TipoDocumento tipo
+        boolean vigente
+    }
+    vacantes {
+        uuid id PK
+        string titulo
+        EstadoVacante estado
+        uuid empresaId FK
+        uuid creadaPorId FK
+    }
+    postulaciones {
+        uuid id PK
+        int numero UK
+        uuid empresaId FK
+        uuid vacanteId FK
+        uuid candidatoId FK
+        uuid curriculoId FK
+        uuid cedulaId FK
+        EstadoPostulacion estado
+    }
+    historial_estado_postulacion {
+        uuid id PK
+        uuid postulacionId FK
+        EstadoPostulacion estadoNuevo
+        uuid cambiadoPorId FK
+    }
+    predicciones_ml {
+        uuid id PK
+        uuid postulacionId FK, UK
+        float puntajeAfinidad
+        boolean esApto
+        uuid modeloId FK
+    }
+    modelos_ml {
+        uuid id PK
+        string nombre
+        string version
+        boolean activo
+    }
+    notificaciones {
+        uuid id PK
+        uuid usuarioId FK
+        uuid empresaId FK
+        uuid postulacionId FK
+        CanalNotificacion canal
+        EstadoNotificacion estado
+    }
+    plantillas_notificacion {
+        uuid id PK
+        uuid empresaId FK
+        EventoNotificacion evento
+        CanalNotificacion canal
+        int version
+    }
+    conversaciones {
+        uuid id PK
+        uuid empresaId FK
+        uuid candidatoId FK
+        uuid postulacionId FK, UK
+    }
+    mensajes {
+        uuid id PK
+        uuid conversacionId FK
+        uuid autorId FK
+        text contenido
+        timestamp leidoEn
+    }
+    conjuntos_datos {
+        uuid id PK
+        uuid empresaId FK
+        uuid subidoPorId FK
+        string nombreArchivo
+    }
+    registro_auditoria {
+        uuid id PK
+        uuid empresaId FK
+        uuid usuarioId FK
+        string accion
+        string entidad
+    }

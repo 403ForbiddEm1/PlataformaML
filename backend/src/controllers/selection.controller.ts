@@ -10,10 +10,16 @@ import {
   estadoPostulacionToFrontend,
   MLFactorBreakdown,
 } from '../types';
-import { EstadoPostulacion, Rol, TipoDocumento } from '@prisma/client';
+import {
+  EstadoEmpresa,
+  EstadoPostulacion,
+  EstadoVacante,
+  EventoNotificacion,
+  Rol,
+  TipoDocumento,
+} from '@prisma/client';
 import { mlService } from '../services/ml.service';
-import { emailService } from '../services/email.service';
-import { whatsappService } from '../services/whatsapp.service';
+import { notificationService } from '../services/notification.service';
 import { auditService } from '../services/audit.service';
 
 function formatApplication(app: any): ApplicationResponse {
@@ -45,7 +51,6 @@ function formatApplication(app: any): ApplicationResponse {
     channel: 'Sistema',
   }));
 
-  // Evento inicial de registro
   timeline.push({
     id: `reg-${app.id}`,
     stage: 'Registro',
@@ -92,22 +97,51 @@ function formatApplication(app: any): ApplicationResponse {
   };
 }
 
+function mapearEstadoAEvento(estado: EstadoPostulacion): EventoNotificacion {
+  switch (estado) {
+    case EstadoPostulacion.EN_REVISION:
+      return EventoNotificacion.EN_REVISION;
+    case EstadoPostulacion.PRESELECCIONADA:
+      return EventoNotificacion.PRESELECCIONADA;
+    case EstadoPostulacion.ENTREVISTA:
+      return EventoNotificacion.ENTREVISTA_1;
+    case EstadoPostulacion.CONTRATADA:
+      return EventoNotificacion.CONTRATADA;
+    case EstadoPostulacion.RECHAZADA:
+      return EventoNotificacion.RECHAZADA;
+    case EstadoPostulacion.RECIBIDA:
+    default:
+      return EventoNotificacion.POSTULACION_RECIBIDA;
+  }
+}
+
+const postulacionInclude = {
+  vacante: true,
+  candidato: true,
+  curriculo: true,
+  cedula: true,
+  prediccionML: true,
+  conversacion: { select: { id: true } },
+  historialDeEstados: {
+    include: { cambiadoPor: true },
+    orderBy: { creadoEn: 'desc' as const },
+  },
+} as const;
+
 export const selectionController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      const { email, vacancyId, status } = req.query;
+      if (!user) throw new HttpError(401, 'No autenticado');
+      const { vacancyId, status } = req.query;
 
-      let whereClause: any = {};
+      const whereClause: any = {};
 
-      if (user && (user.rol === Rol.ADMIN || user.rol === Rol.RRHH) && user.empresaId) {
+      // Aislamiento estricto por rol (se ignora cualquier ?email= externo)
+      if ((user.rol === Rol.ADMIN || user.rol === Rol.RRHH) && user.empresaId) {
         whereClause.empresaId = user.empresaId;
-      } else if (user && user.rol === Rol.CANDIDATO) {
+      } else if (user.rol === Rol.CANDIDATO) {
         whereClause.candidatoId = user.id;
-      }
-
-      if (email && typeof email === 'string') {
-        whereClause.candidato = { correo: { contains: email.trim(), mode: 'insensitive' } };
       }
 
       if (vacancyId && typeof vacancyId === 'string') {
@@ -120,19 +154,8 @@ export const selectionController = {
 
       const postulaciones = await prisma.postulacion.findMany({
         where: whereClause,
-        include: {
-          vacante: true,
-          candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
-          historialDeEstados: {
-            include: { cambiadoPor: true },
-            orderBy: { creadoEn: 'desc' },
-          },
-        },
+        include: postulacionInclude,
         orderBy: [
-          // Orden por afinidad ML descendente
           { prediccionML: { puntajeAfinidad: 'desc' } },
           { postuladaEn: 'desc' },
         ],
@@ -150,31 +173,22 @@ export const selectionController = {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      const { id } = req.params;
+      if (!user) throw new HttpError(401, 'No autenticado');
+      const id = req.params.id as string;
 
       const postulacion = await prisma.postulacion.findUnique({
         where: { id },
-        include: {
-          vacante: true,
-          candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
-          historialDeEstados: {
-            include: { cambiadoPor: true },
-            orderBy: { creadoEn: 'desc' },
-          },
-        },
+        include: postulacionInclude,
       });
 
       if (!postulacion) throw new HttpError(404, 'Postulación no encontrada');
 
-      // Validar permisos de acceso
-      if (user && user.rol === Rol.CANDIDATO && postulacion.candidatoId !== user.id) {
-        throw new HttpError(403, 'No tiene acceso a esta postulación');
+      // 404 para recursos que no pertenecen al candidato o a la empresa (no revela existencia)
+      if (user.rol === Rol.CANDIDATO && postulacion.candidatoId !== user.id) {
+        throw new HttpError(404, 'Postulación no encontrada');
       }
-      if (user && (user.rol === Rol.ADMIN || user.rol === Rol.RRHH) && postulacion.empresaId !== user.empresaId) {
-        throw new HttpError(403, 'No tiene acceso a postulaciones de otra empresa');
+      if ((user.rol === Rol.ADMIN || user.rol === Rol.RRHH) && postulacion.empresaId !== user.empresaId) {
+        throw new HttpError(404, 'Postulación no encontrada');
       }
 
       res.json({
@@ -189,41 +203,46 @@ export const selectionController = {
   async submitApplication(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      const body = submitApplicationSchema.parse(req.body);
-
-      // Determinar el candidato
-      let candidatoId = user?.id;
-
-      if (!candidatoId) {
-        if (!body.email) {
-          throw new HttpError(400, 'Debe iniciar sesión o suministrar su correo electrónico');
-        }
-
-        const candidatoExistente = await prisma.usuario.findUnique({
-          where: { correo: body.email.toLowerCase().trim() },
-        });
-
-        if (candidatoExistente) {
-          candidatoId = candidatoExistente.id;
-        } else {
-          const nuevo = await prisma.usuario.create({
-            data: {
-              correo: body.email.toLowerCase().trim(),
-              nombre: body.firstName || 'Candidato',
-              apellido: body.lastName || '',
-              telefono: body.phone,
-              rol: Rol.CANDIDATO,
-              aceptoTerminosEn: new Date(),
-            },
-          });
-          candidatoId = nuevo.id;
-          await prisma.perfilCandidato.create({
-            data: { usuarioId: nuevo.id, habilidades: [] },
-          });
-        }
+      if (!user || user.rol !== Rol.CANDIDATO) {
+        throw new HttpError(403, 'Solo un candidato autenticado puede postularse');
       }
 
-      // Buscar perfil de candidato
+      const body = submitApplicationSchema.parse(req.body);
+      const candidatoId = user.id;
+
+      const candidato = await prisma.usuario.findUnique({ where: { id: candidatoId } });
+      if (!candidato) throw new HttpError(404, 'Candidato no encontrado');
+
+      // Vacante debe estar ABIERTA y su empresa ACTIVA (si no, 404)
+      const vacante = await prisma.vacante.findUnique({
+        where: { id: body.vacancyId },
+        include: { empresa: true },
+      });
+
+      if (
+        !vacante ||
+        vacante.estado !== EstadoVacante.ABIERTA ||
+        vacante.empresa.estado !== EstadoEmpresa.ACTIVA ||
+        (vacante.cierraEn && vacante.cierraEn <= new Date())
+      ) {
+        throw new HttpError(404, 'La vacante solicitada no existe o no está disponible');
+      }
+
+      // Validar duplicado
+      const postulacionExistente = await prisma.postulacion.findUnique({
+        where: {
+          vacanteId_candidatoId: {
+            vacanteId: vacante.id,
+            candidatoId,
+          },
+        },
+      });
+
+      if (postulacionExistente) {
+        throw new HttpError(409, 'Ya te postulaste a esta vacante');
+      }
+
+      // Buscar o crear perfil del candidato
       let perfil = await prisma.perfilCandidato.findUnique({
         where: { usuarioId: candidatoId },
         include: { educacion: true, experiencia: true, documentos: true },
@@ -236,29 +255,7 @@ export const selectionController = {
         });
       }
 
-      // Buscar vacante
-      const vacante = await prisma.vacante.findUnique({
-        where: { id: body.vacancyId },
-        include: { empresa: true },
-      });
-
-      if (!vacante) throw new HttpError(404, 'La vacante solicitada no existe');
-
-      // Validar si ya se postuló a esta vacante
-      const postulaciónExistente = await prisma.postulacion.findUnique({
-        where: {
-          vacanteId_candidatoId: {
-            vacanteId: vacante.id,
-            candidatoId,
-          },
-        },
-      });
-
-      if (postulaciónExistente) {
-        throw new HttpError(409, 'Ya te has postulado previamente a esta vacante.');
-      }
-
-      // Manejo de archivos subidos en multipart
+      // Archivos subidos en multipart o documentos vigentes del perfil
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
       let curriculoId: string | null = null;
       let cedulaId: string | null = null;
@@ -269,7 +266,6 @@ export const selectionController = {
           where: { perfilId: perfil.id, tipo: TipoDocumento.CURRICULO, vigente: true },
           data: { vigente: false },
         });
-
         const docCv = await prisma.documentoCandidato.create({
           data: {
             perfilId: perfil.id,
@@ -293,7 +289,6 @@ export const selectionController = {
           where: { perfilId: perfil.id, tipo: TipoDocumento.CEDULA, vigente: true },
           data: { vigente: false },
         });
-
         const docCedula = await prisma.documentoCandidato.create({
           data: {
             perfilId: perfil.id,
@@ -311,21 +306,84 @@ export const selectionController = {
         if (cedulaVigente) cedulaId = cedulaVigente.id;
       }
 
-      // Crear registro de Postulacion
-      const postulacion = await prisma.postulacion.create({
-        data: {
-          vacanteId: vacante.id,
-          empresaId: vacante.empresaId,
-          candidatoId,
-          curriculoId,
-          cedulaId,
-          estado: EstadoPostulacion.RECIBIDA,
-        },
+      let respuestasAdicionales: any = undefined;
+      if (req.body?.respuestasAdicionales) {
+        try {
+          respuestasAdicionales =
+            typeof req.body.respuestasAdicionales === 'string'
+              ? JSON.parse(req.body.respuestasAdicionales)
+              : req.body.respuestasAdicionales;
+        } catch {
+          throw new HttpError(400, 'Formato inválido en respuestas adicionales');
+        }
+      }
+
+      // Transacción: Postulación + Historial RECIBIDA + Conversación + Notificaciones encoladas
+      const postulacion = await prisma.$transaction(async (tx) => {
+        const post = await tx.postulacion.create({
+          data: {
+            vacanteId: vacante.id,
+            empresaId: vacante.empresaId, // Tomado de la vacante, jamás del cliente
+            candidatoId,
+            curriculoId,
+            cedulaId,
+            respuestasAdicionales,
+            estado: EstadoPostulacion.RECIBIDA,
+          },
+        });
+
+        await tx.historialEstadoPostulacion.create({
+          data: {
+            postulacionId: post.id,
+            estadoAnterior: null,
+            estadoNuevo: EstadoPostulacion.RECIBIDA,
+            nota: 'Postulación registrada a través del portal web.',
+            cambiadoPorId: candidatoId,
+          },
+        });
+
+        await tx.conversacion.create({
+          data: {
+            empresaId: vacante.empresaId,
+            candidatoId,
+            postulacionId: post.id,
+          },
+        });
+
+        await notificationService.encolar(
+          {
+            evento: EventoNotificacion.POSTULACION_RECIBIDA,
+            usuarioId: candidato.id,
+            empresaId: vacante.empresaId,
+            postulacionId: post.id,
+            destinatarioCorreo: candidato.correo,
+            destinatarioTelefono: candidato.telefono,
+            consentimientoWhatsapp: !!candidato.consentimientoWhatsappEn,
+            variables: {
+              nombre: candidato.nombre,
+              vacante: vacante.titulo,
+              empresa: vacante.empresa.nombre,
+              estado: 'Recibida',
+            },
+          },
+          tx,
+        );
+
+        return post;
       });
 
-      // Crear evaluación de Machine Learning
+      // Evaluar afinidad ML (extrayendo texto real del CV con POST /extract de ml-service si se subió archivo)
+      let extractedCvText: string | null = null;
+      if (files?.cv && files.cv[0]) {
+        const cvUploaded = files.cv[0];
+        const extracted = await mlService.extractText(cvUploaded.path, cvUploaded.originalname, cvUploaded.mimetype);
+        if (extracted?.text) {
+          extractedCvText = extracted.text;
+        }
+      }
+
       const vacancyText = mlService.buildVacancyText(vacante);
-      const candidateText = mlService.buildCandidateText(perfil);
+      const candidateText = mlService.buildCandidateText(perfil, extractedCvText);
 
       const prediction = await mlService.predictAffinity(
         vacancyText,
@@ -342,68 +400,34 @@ export const selectionController = {
           puntajeAfinidad: prediction.puntajeAfinidad,
           esApto: prediction.esApto,
           versionModelo: prediction.modelVersion,
-          datosEntrada: { vacancyText, candidateText },
+          datosEntrada: {
+            aniosExperiencia: perfil.aniosExperiencia,
+            nivelEducativo: perfil.nivelEducativo,
+            habilidades: perfil.habilidades,
+            habilidadesRequeridas: vacante.habilidadesRequeridas,
+            aniosExperienciaMinimos: vacante.aniosExperienciaMinimos,
+            nivelEducativoMinimo: vacante.nivelEducativoMinimo,
+          },
           datosCrudosPrediccion: prediction.breakdown as any,
         },
       });
 
-      // Registrar primer evento de trazabilidad
-      await prisma.historialEstadoPostulacion.create({
-        data: {
-          postulacionId: postulacion.id,
-          estadoAnterior: null,
-          estadoNuevo: EstadoPostulacion.RECIBIDA,
-          nota: 'Postulación registrada exitosamente a través del portal web.',
-          cambiadoPorId: candidatoId,
-        },
-      });
-
-      // Obtener candidato para notificaciones
-      const candidato = await prisma.usuario.findUnique({ where: { id: candidatoId } });
-
-      if (candidato?.correo) {
-        await emailService.sendEmail({
-          to: candidato.correo,
-          subject: `Postulación Recibida - ${vacante.titulo}`,
-          text: `Hola ${candidato.nombre},\n\nHemos recibido exitosamente tu postulación para la vacante de "${vacante.titulo}" en ${vacante.empresa.nombre}.\n\nTu perfil será revisado y te notificaremos sobre cualquier avance.\n\n¡Mucho éxito!`,
-          usuarioId: candidato.id,
-          empresaId: vacante.empresaId,
-          postulacionId: postulacion.id,
-          tipo: 'POSTULACION_RECIBIDA',
-        });
-      }
-
-      if (candidato?.telefono) {
-        await whatsappService.sendWhatsApp({
-          to: candidato.telefono,
-          message: `¡Hola ${candidato.nombre}! Tu postulación para "${vacante.titulo}" en ${vacante.empresa.nombre} ha sido recibida con éxito. Te mantendremos informado por esta vía.`,
-          usuarioId: candidato.id,
-          empresaId: vacante.empresaId,
-          postulacionId: postulacion.id,
-          tipo: 'POSTULACION_RECIBIDA',
-        });
-      }
-
       await auditService.log({
         usuarioId: candidatoId,
         empresaId: vacante.empresaId,
-        accion: 'NUEVA_POSTULACION',
+        accion: 'POSTULACION_CREADA',
         entidad: 'Postulacion',
         entidadId: postulacion.id,
         detalle: { vacanteId: vacante.id, puntajeAfinidad: prediction.puntajeAfinidad },
-        ip: req.ip,
+        ip: req.ip as string | undefined,
       });
+
+      // Procesar cola de notificaciones en segundo plano
+      notificationService.procesarCola().catch(() => {});
 
       const completa = await prisma.postulacion.findUnique({
         where: { id: postulacion.id },
-        include: {
-          vacante: true,
-          candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
-          historialDeEstados: { include: { cambiadoPor: true } },
-        },
+        include: postulacionInclude,
       });
 
       res.status(201).json({
@@ -418,120 +442,79 @@ export const selectionController = {
   async updateStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      const { id } = req.params;
+      if (!user || !user.empresaId) throw new HttpError(403, 'Acceso denegado');
+
+      const id = req.params.id as string;
       const body = updateApplicationStatusSchema.parse(req.body);
 
-      const postulacion = await prisma.postulacion.findUnique({
-        where: { id },
+      // Filtrado por { id, empresaId }: si es de otra empresa, devuelve 404
+      const postulacion = await prisma.postulacion.findFirst({
+        where: { id, empresaId: user.empresaId },
         include: {
-          vacante: true,
+          vacante: { include: { empresa: true } },
           candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
         },
       });
 
       if (!postulacion) throw new HttpError(404, 'Postulación no encontrada');
 
-      // Validar acceso: el usuario debe pertenecer a la empresa de la vacante o ser SUPER_ADMIN
-      if (user?.rol !== Rol.SUPER_ADMIN && postulacion.empresaId !== user?.empresaId) {
-        throw new HttpError(403, 'No tiene permiso para cambiar el estado de postulaciones de otra empresa');
-      }
-
       const estadoAnterior = postulacion.estado;
       const nuevoEstado = estadoPostulacionFromFrontend(body.status);
+      const evento = mapearEstadoAEvento(nuevoEstado);
 
-      const postulacionActualizada = await prisma.postulacion.update({
-        where: { id },
-        data: {
-          estado: nuevoEstado,
-        },
-        include: {
-          vacante: true,
-          candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
-          historialDeEstados: {
-            include: { cambiadoPor: true },
-            orderBy: { creadoEn: 'desc' },
+      await prisma.$transaction(async (tx) => {
+        await tx.postulacion.update({
+          where: { id: postulacion.id },
+          data: { estado: nuevoEstado },
+        });
+
+        await tx.historialEstadoPostulacion.create({
+          data: {
+            postulacionId: postulacion.id,
+            estadoAnterior,
+            estadoNuevo: nuevoEstado,
+            nota: body.notes || null,
+            cambiadoPorId: user.id,
           },
-        },
-      });
-
-      // Crear entrada en el historial de trazabilidad
-      await prisma.historialEstadoPostulacion.create({
-        data: {
-          postulacionId: postulacion.id,
-          estadoAnterior,
-          estadoNuevo: nuevoEstado,
-          nota: body.notes || null,
-          cambiadoPorId: user?.id || null,
-        },
-      });
-
-      // Notificaciones automáticas por cambio de estado
-      const nombreCandidato = postulacion.candidato.nombre;
-      const tituloVacante = postulacion.vacante.titulo;
-      const candidato = postulacion.candidato;
-
-      let msg = `Hola ${nombreCandidato}, tu postulación para ${tituloVacante} ha avanzado a etapa: ${body.status}.`;
-      if (body.status === 'Preseleccionado') {
-        msg = `¡Felicidades ${nombreCandidato}! Tu perfil ha sido PRESELECCIONADO para la vacante de ${tituloVacante}. El equipo de Talento Humano te contactará para coordinar la entrevista.`;
-      } else if (body.status === 'Entrevista') {
-        msg = `Hola ${nombreCandidato}, has sido convocado a una entrevista técnica para la posición de ${tituloVacante}. Revisa tu correo con los detalles.`;
-      } else if (body.status === 'Descartado') {
-        msg = `Estimado(a) ${nombreCandidato}, agradecemos profundamente tu tiempo e interés en ${tituloVacante}. En esta oportunidad hemos avanzado con otros perfiles, pero conservaremos tu hoja de vida.`;
-      }
-
-      if (candidato.correo) {
-        await emailService.sendEmail({
-          to: candidato.correo,
-          subject: `Actualización de Postulación: ${body.status} - ${tituloVacante}`,
-          text: msg,
-          usuarioId: candidato.id,
-          empresaId: postulacion.empresaId,
-          postulacionId: postulacion.id,
-          tipo: `CAMBIO_ESTADO_${nuevoEstado}`,
         });
-      }
 
-      if (candidato.telefono && (body.status === 'Preseleccionado' || body.status === 'Entrevista')) {
-        await whatsappService.sendWhatsApp({
-          to: candidato.telefono,
-          message: msg,
-          usuarioId: candidato.id,
-          empresaId: postulacion.empresaId,
-          postulacionId: postulacion.id,
-          tipo: `CAMBIO_ESTADO_${nuevoEstado}`,
+        await notificationService.encolar(
+          {
+            evento,
+            usuarioId: postulacion.candidato.id,
+            empresaId: postulacion.empresaId,
+            postulacionId: postulacion.id,
+            destinatarioCorreo: postulacion.candidato.correo,
+            destinatarioTelefono: postulacion.candidato.telefono,
+            consentimientoWhatsapp: !!postulacion.candidato.consentimientoWhatsappEn,
+            variables: {
+              nombre: postulacion.candidato.nombre,
+              vacante: postulacion.vacante.titulo,
+              empresa: postulacion.vacante.empresa.nombre,
+              estado: body.status,
+            },
+          },
+          tx,
+        );
+
+        await tx.registroAuditoria.create({
+          data: {
+            usuarioId: user.id,
+            empresaId: postulacion.empresaId,
+            accion: 'CAMBIO_ESTADO_POSTULACION',
+            entidad: 'Postulacion',
+            entidadId: postulacion.id,
+            detalle: { estadoAnterior, nuevoEstado, nota: body.notes },
+            ip: (req.ip as string | undefined) ?? null,
+          },
         });
-      }
-
-      await auditService.log({
-        usuarioId: user?.id,
-        empresaId: postulacion.empresaId,
-        accion: 'CAMBIO_ESTADO_POSTULACION',
-        entidad: 'Postulacion',
-        entidadId: postulacion.id,
-        detalle: { estadoAnterior, nuevoEstado, nota: body.notes },
-        ip: req.ip,
       });
 
-      // Recargar con historial actualizado
+      notificationService.procesarCola().catch(() => {});
+
       const recargada = await prisma.postulacion.findUnique({
-        where: { id },
-        include: {
-          vacante: true,
-          candidato: true,
-          curriculo: true,
-          cedula: true,
-          prediccionML: true,
-          historialDeEstados: {
-            include: { cambiadoPor: true },
-            orderBy: { creadoEn: 'desc' },
-          },
-        },
+        where: { id: postulacion.id },
+        include: postulacionInclude,
       });
 
       res.json({

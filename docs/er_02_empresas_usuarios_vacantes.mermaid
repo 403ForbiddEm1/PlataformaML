@@ -1,0 +1,111 @@
+erDiagram
+    empresas |o--o{ usuarios : "agrupa"
+    usuarios |o--o{ empresas : "aprueba"
+    empresas ||--o{ invitaciones : "emite"
+    usuarios |o--o{ invitaciones : "invita"
+    empresas ||--o| linea_base_proceso : "mide"
+    usuarios ||--o{ tokens_usuario : "genera"
+    empresas ||--o{ vacantes : "publica"
+    usuarios ||--o{ vacantes : "crea"
+
+    empresas {
+        uuid id PK
+        string nombre UK
+        string razonSocial
+        string identificacionFiscal UK
+        string sector
+        string correoContacto
+        string telefonoContacto
+        string sitioWeb
+        string dominio UK
+        string direccion
+        float latitud
+        float longitud
+        EstadoEmpresa estado
+        text motivoRechazo
+        timestamp aprobadaEn
+        timestamp activaHasta
+        timestamp ultimaVacanteEn
+        timestamp desactivadaEn
+        MotivoDesactivacion motivoDesactivacion
+        uuid aprobadaPorId FK
+        timestamp creadoEn
+        timestamp actualizadoEn
+    }
+    linea_base_proceso {
+        uuid id PK
+        uuid empresaId FK, UK
+        float tiempoFiltradoManualDias
+        float precisionFiltradoManual
+        float satisfaccionReclutadores
+        timestamp medidoEn
+        timestamp actualizadoEn
+    }
+    invitaciones {
+        uuid id PK
+        uuid empresaId FK
+        string correo
+        Rol rol
+        string tokenHash UK
+        timestamp expiraEn
+        timestamp usadaEn
+        uuid invitadoPorId FK
+        timestamp creadoEn
+    }
+    usuarios {
+        uuid id PK
+        string correo UK
+        string claveHash
+        string googleId UK
+        string nombre
+        string apellido
+        string telefono
+        string fotoRuta
+        Rol rol
+        boolean activo
+        timestamp correoVerificadoEn
+        timestamp aceptoTerminosEn
+        timestamp consentimientoWhatsappEn
+        timestamp claveCambiadaEn
+        int intentosFallidos
+        timestamp bloqueadoHasta
+        timestamp ultimoAccesoEn
+        uuid empresaId FK
+        timestamp creadoEn
+        timestamp actualizadoEn
+    }
+    tokens_usuario {
+        uuid id PK
+        uuid usuarioId FK
+        TipoToken tipo
+        string tokenHash UK
+        timestamp expiraEn
+        timestamp usadoEn
+        timestamp creadoEn
+    }
+    vacantes {
+        uuid id PK
+        string titulo
+        text descripcion
+        string ubicacion
+        string rangoSalarial
+        float latitud
+        float longitud
+        string especializacion
+        string departamento
+        ModalidadTrabajo modalidad
+        TipoContrato tipoContrato
+        int cantidadVacantes
+        text requisitos
+        string[] habilidadesRequeridas
+        int aniosExperienciaMinimos
+        NivelEducativo nivelEducativoMinimo
+        json camposAdicionales
+        EstadoVacante estado
+        timestamp publicadaEn
+        timestamp cierraEn
+        uuid empresaId FK
+        uuid creadaPorId FK
+        timestamp creadoEn
+        timestamp actualizadoEn
+    }

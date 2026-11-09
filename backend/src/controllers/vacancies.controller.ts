@@ -1,6 +1,6 @@
-// src/controllers/vacancies.controller.ts
+// src/controllers/vacancies.controller.ts — traduce HTTP ↔ vacancy.service
 import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../config/database';
+import { z } from 'zod';
 import { HttpError } from '../utils/http-error';
 import { createVacancySchema, updateVacancySchema } from '../validators/vacancy.validator';
 import {
@@ -12,8 +12,7 @@ import {
   tipoContratoToFrontend,
   VacancyResponse,
 } from '../types';
-import { EstadoEmpresa, EstadoVacante, Rol } from '@prisma/client';
-import { auditService } from '../services/audit.service';
+import * as vacancyService from '../services/vacancy.service';
 
 function formatVacancy(v: any): VacancyResponse {
   const requirementsArray = typeof v.requisitos === 'string'
@@ -33,43 +32,28 @@ function formatVacancy(v: any): VacancyResponse {
     requiredSkills: v.habilidadesRequeridas || [],
     minExperienceYears: v.aniosExperienciaMinimos || 0,
     openings: v.cantidadVacantes || 1,
-    appliedCount: v._count?.postulaciones ?? (Array.isArray(v.postulaciones) ? v.postulaciones.length : 0),
+    appliedCount: v._count?.postulaciones ?? 0,
     createdAt: v.creadoEn.toISOString(),
     companyId: v.empresaId,
     companyName: v.empresa?.nombre,
   };
 }
 
+const idSchema = z.string().uuid('Identificador inválido');
+const ip = (req: Request) => req.ip as string | undefined;
+
+function actorRequerido(req: Request) {
+  if (!req.user) throw new HttpError(401, 'No autenticado');
+  return req.user;
+}
+
+const reqToText = (r: string | string[]) => (Array.isArray(r) ? r.join('\n') : String(r));
+
 export const vacanciesController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user;
-      let whereClause: any = {};
-
-      if (user && (user.rol === Rol.ADMIN || user.rol === Rol.RRHH) && user.empresaId) {
-        // Personal de la empresa ve todas las vacantes de su empresa
-        whereClause = { empresaId: user.empresaId };
-      } else {
-        // Visitantes o candidatos solo ven vacantes abiertas de empresas activas
-        whereClause = {
-          estado: EstadoVacante.ABIERTA,
-          empresa: { estado: EstadoEmpresa.ACTIVA },
-        };
-      }
-
-      const vacantes = await prisma.vacante.findMany({
-        where: whereClause,
-        include: {
-          empresa: { select: { nombre: true, estado: true } },
-          _count: { select: { postulaciones: true } },
-        },
-        orderBy: { creadoEn: 'desc' },
-      });
-
-      res.json({
-        success: true,
-        data: vacantes.map(formatVacancy),
-      });
+      const vacantes = await vacancyService.listar(req.user);
+      res.json({ success: true, data: vacantes.map(formatVacancy) });
     } catch (err) {
       next(err);
     }
@@ -77,23 +61,8 @@ export const vacanciesController = {
 
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      const vacante = await prisma.vacante.findUnique({
-        where: { id },
-        include: {
-          empresa: { select: { nombre: true, estado: true } },
-          _count: { select: { postulaciones: true } },
-        },
-      });
-
-      if (!vacante) {
-        throw new HttpError(404, 'Vacante no encontrada');
-      }
-
-      res.json({
-        success: true,
-        data: formatVacancy(vacante),
-      });
+      const vacante = await vacancyService.obtener(idSchema.parse(req.params.id), req.user);
+      res.json({ success: true, data: formatVacancy(vacante) });
     } catch (err) {
       next(err);
     }
@@ -101,54 +70,27 @@ export const vacanciesController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user;
-      if (!user || !user.empresaId) {
-        throw new HttpError(403, 'Debe pertenecer a una empresa activa para crear vacantes');
-      }
-
+      const actor = actorRequerido(req);
       const body = createVacancySchema.parse(req.body);
 
-      const requisitosTexto = Array.isArray(body.requirements)
-        ? body.requirements.join('\n')
-        : String(body.requirements);
-
-      const vacante = await prisma.vacante.create({
-        data: {
+      const vacante = await vacancyService.crear(
+        actor,
+        {
           titulo: body.title,
           departamento: body.department,
           ubicacion: body.location,
           modalidad: modalidadFromFrontend(body.workMode),
           tipoContrato: tipoContratoFromFrontend(body.type),
           descripcion: body.description,
-          requisitos: requisitosTexto,
+          requisitos: reqToText(body.requirements),
           habilidadesRequeridas: body.requiredSkills,
           aniosExperienciaMinimos: body.minExperienceYears,
           cantidadVacantes: body.openings,
           estado: estadoVacanteFromFrontend(body.status),
-          empresaId: user.empresaId,
-          creadaPorId: user.id,
-          publicadaEn: new Date(),
         },
-        include: {
-          empresa: { select: { nombre: true } },
-          _count: { select: { postulaciones: true } },
-        },
-      });
-
-      await auditService.log({
-        usuarioId: user.id,
-        empresaId: user.empresaId,
-        accion: 'CREAR_VACANTE',
-        entidad: 'Vacante',
-        entidadId: vacante.id,
-        detalle: { titulo: vacante.titulo },
-        ip: req.ip,
-      });
-
-      res.status(201).json({
-        success: true,
-        data: formatVacancy(vacante),
-      });
+        ip(req),
+      );
+      res.status(201).json({ success: true, data: formatVacancy(vacante) });
     } catch (err) {
       next(err);
     }
@@ -156,63 +98,25 @@ export const vacanciesController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user;
-      const { id } = req.params;
-
-      const vacanteExistente = await prisma.vacante.findUnique({
-        where: { id },
-      });
-
-      if (!vacanteExistente) {
-        throw new HttpError(404, 'Vacante no encontrada');
-      }
-
-      if (user?.rol !== Rol.SUPER_ADMIN && vacanteExistente.empresaId !== user?.empresaId) {
-        throw new HttpError(403, 'No tiene permiso para modificar vacantes de otra empresa');
-      }
-
+      const actor = actorRequerido(req);
+      const id = idSchema.parse(req.params.id);
       const body = updateVacancySchema.parse(req.body);
 
-      const updateData: any = {};
-      if (body.title !== undefined) updateData.titulo = body.title;
-      if (body.department !== undefined) updateData.departamento = body.department;
-      if (body.location !== undefined) updateData.ubicacion = body.location;
-      if (body.workMode !== undefined) updateData.modalidad = modalidadFromFrontend(body.workMode);
-      if (body.type !== undefined) updateData.tipoContrato = tipoContratoFromFrontend(body.type);
-      if (body.description !== undefined) updateData.descripcion = body.description;
-      if (body.requirements !== undefined) {
-        updateData.requisitos = Array.isArray(body.requirements)
-          ? body.requirements.join('\n')
-          : String(body.requirements);
-      }
-      if (body.requiredSkills !== undefined) updateData.habilidadesRequeridas = body.requiredSkills;
-      if (body.minExperienceYears !== undefined) updateData.aniosExperienciaMinimos = body.minExperienceYears;
-      if (body.openings !== undefined) updateData.cantidadVacantes = body.openings;
-      if (body.status !== undefined) updateData.estado = estadoVacanteFromFrontend(body.status);
+      const datos: Record<string, unknown> = {};
+      if (body.title !== undefined) datos.titulo = body.title;
+      if (body.department !== undefined) datos.departamento = body.department;
+      if (body.location !== undefined) datos.ubicacion = body.location;
+      if (body.workMode !== undefined) datos.modalidad = modalidadFromFrontend(body.workMode);
+      if (body.type !== undefined) datos.tipoContrato = tipoContratoFromFrontend(body.type);
+      if (body.description !== undefined) datos.descripcion = body.description;
+      if (body.requirements !== undefined) datos.requisitos = reqToText(body.requirements);
+      if (body.requiredSkills !== undefined) datos.habilidadesRequeridas = body.requiredSkills;
+      if (body.minExperienceYears !== undefined) datos.aniosExperienciaMinimos = body.minExperienceYears;
+      if (body.openings !== undefined) datos.cantidadVacantes = body.openings;
+      if (body.status !== undefined) datos.estado = estadoVacanteFromFrontend(body.status);
 
-      const vacanteActualizada = await prisma.vacante.update({
-        where: { id },
-        data: updateData,
-        include: {
-          empresa: { select: { nombre: true } },
-          _count: { select: { postulaciones: true } },
-        },
-      });
-
-      await auditService.log({
-        usuarioId: user?.id,
-        empresaId: user?.empresaId,
-        accion: 'ACTUALIZAR_VACANTE',
-        entidad: 'Vacante',
-        entidadId: id,
-        detalle: updateData,
-        ip: req.ip,
-      });
-
-      res.json({
-        success: true,
-        data: formatVacancy(vacanteActualizada),
-      });
+      const vacante = await vacancyService.actualizar(actor, id, datos, ip(req));
+      res.json({ success: true, data: formatVacancy(vacante) });
     } catch (err) {
       next(err);
     }
@@ -220,29 +124,9 @@ export const vacanciesController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user;
-      const { id } = req.params;
-
-      const vacante = await prisma.vacante.findUnique({
-        where: { id },
-      });
-
-      if (!vacante) throw new HttpError(404, 'Vacante no encontrada');
-
-      if (user?.rol !== Rol.SUPER_ADMIN && vacante.empresaId !== user?.empresaId) {
-        throw new HttpError(403, 'No tiene permiso para eliminar vacantes de otra empresa');
-      }
-
-      // En vez de borrar físicamente si hay postulaciones, la cerramos
-      await prisma.vacante.update({
-        where: { id },
-        data: { estado: EstadoVacante.CERRADA },
-      });
-
-      res.json({
-        success: true,
-        data: { message: 'Vacante cerrada exitosamente' },
-      });
+      const actor = actorRequerido(req);
+      await vacancyService.cerrar(actor, idSchema.parse(req.params.id), ip(req));
+      res.json({ success: true, data: { message: 'Vacante cerrada exitosamente' } });
     } catch (err) {
       next(err);
     }

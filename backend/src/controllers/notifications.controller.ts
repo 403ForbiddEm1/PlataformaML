@@ -1,5 +1,6 @@
 // src/controllers/notifications.controller.ts
 import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/http-error';
 import { sendNotificationSchema } from '../validators/notification.validator';
@@ -12,21 +13,17 @@ export const notificationsController = {
   async getNotifications(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
+      if (!user) throw new HttpError(401, 'No autenticado');
       let whereClause: any = {};
 
-      if (user) {
-        if (user.rol === Rol.SUPER_ADMIN) {
-          whereClause = {};
-        } else if (user.rol === Rol.ADMIN || user.rol === Rol.RRHH) {
-          whereClause = {
-            OR: [
-              { empresaId: user.empresaId },
-              { usuarioId: user.id },
-            ],
-          };
-        } else {
-          whereClause = { usuarioId: user.id };
-        }
+      if (user.rol === Rol.SUPER_ADMIN) {
+        whereClause = {};
+      } else if (user.rol === Rol.ADMIN || user.rol === Rol.RRHH) {
+        whereClause = {
+          OR: [{ empresaId: user.empresaId }, { usuarioId: user.id }],
+        };
+      } else {
+        whereClause = { usuarioId: user.id };
       }
 
       const notificaciones = await prisma.notificacion.findMany({
@@ -49,7 +46,9 @@ export const notificationsController = {
           minute: '2-digit',
         }),
         status:
-          n.estado === EstadoNotificacion.ENVIADA
+          n.estado === EstadoNotificacion.LEIDA
+            ? 'Leído'
+            : n.estado === EstadoNotificacion.ENTREGADA || n.estado === EstadoNotificacion.ENVIADA
             ? 'Entregado'
             : n.estado === EstadoNotificacion.FALLIDA
             ? 'Fallido'
@@ -69,7 +68,20 @@ export const notificationsController = {
   async sendNotification(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
+      if (!user || !user.empresaId) throw new HttpError(403, 'Acceso denegado');
+
       const body = sendNotificationSchema.parse(req.body);
+
+      // Si se asocia a una postulación, validar que pertenezca a la empresa del usuario
+      let targetUserId = user.id;
+      if (body.relatedApplicationId) {
+        const post = await prisma.postulacion.findFirst({
+          where: { id: body.relatedApplicationId, empresaId: user.empresaId },
+          select: { id: true, candidatoId: true },
+        });
+        if (!post) throw new HttpError(404, 'Postulación no encontrada');
+        targetUserId = post.candidatoId;
+      }
 
       let recordId: string | undefined;
 
@@ -77,8 +89,8 @@ export const notificationsController = {
         const result = await whatsappService.sendWhatsApp({
           to: body.recipient,
           message: body.message,
-          usuarioId: user?.id,
-          empresaId: user?.empresaId || undefined,
+          usuarioId: targetUserId,
+          empresaId: user.empresaId,
           postulacionId: body.relatedApplicationId,
           tipo: 'MENSAJE_MANUAL',
         });
@@ -88,8 +100,8 @@ export const notificationsController = {
           to: body.recipient,
           subject: body.title,
           text: body.message,
-          usuarioId: user?.id,
-          empresaId: user?.empresaId || undefined,
+          usuarioId: targetUserId,
+          empresaId: user.empresaId,
           postulacionId: body.relatedApplicationId,
           tipo: 'MENSAJE_MANUAL',
         });
@@ -117,6 +129,28 @@ export const notificationsController = {
         success: true,
         data: responseItem,
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async markAsRead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user;
+      if (!user) throw new HttpError(401, 'No autenticado');
+      const id = z.string().uuid('Identificador inválido').parse(req.params.id);
+
+      const notif = await prisma.notificacion.findFirst({
+        where: { id, usuarioId: user.id },
+      });
+      if (!notif) throw new HttpError(404, 'Notificación no encontrada');
+
+      const actualizada = await prisma.notificacion.update({
+        where: { id: notif.id },
+        data: { estado: EstadoNotificacion.LEIDA },
+      });
+
+      res.json({ success: true, data: actualizada });
     } catch (err) {
       next(err);
     }

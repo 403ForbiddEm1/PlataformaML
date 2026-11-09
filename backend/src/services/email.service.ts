@@ -29,6 +29,29 @@ export interface SendEmailOptions {
 }
 
 export const emailService = {
+  /**
+   * Envío directo sin crear fila duplicada (usado por el worker de notification.service)
+   */
+  async sendDirect(options: { to: string; subject: string; text: string; html?: string }): Promise<{ success: boolean; error?: string }> {
+    const { to, subject, text, html } = options;
+    if (!transporter) {
+      console.log(`[EMAIL_DEV] Destinatario: ${to} | Asunto: ${subject}`);
+      return { success: true };
+    }
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Plataforma Reclutamiento" <no-reply@plataforma.test>',
+        to,
+        subject,
+        text,
+        html: html || `<p>${text.replace(/\n/g, '<br/>')}</p>`,
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error SMTP' };
+    }
+  },
+
   async sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string }> {
     const { to, subject, text, html, usuarioId, empresaId, postulacionId, tipo } = options;
 

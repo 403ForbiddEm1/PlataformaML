@@ -42,7 +42,7 @@ export const adminController = {
   async updateCompanyStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user;
-      const { id } = req.params;
+      const id = req.params.id as string;
       const body = updateCompanyStatusSchema.parse(req.body);
 
       const empresa = await prisma.empresa.findUnique({ where: { id } });
@@ -68,7 +68,7 @@ export const adminController = {
         entidad: 'Empresa',
         entidadId: id,
         detalle: { estadoAnterior, nuevoEstado, motivo: body.rejectionReason },
-        ip: req.ip,
+        ip: req.ip as string | undefined,
       });
 
       res.json({
