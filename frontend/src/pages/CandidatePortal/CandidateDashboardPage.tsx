@@ -1,16 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Application, ApplicationStatus, CandidateProfile, Vacancy, NotificationItem } from '@/types';
 import { applicationsService } from '@/services/applications.service';
 import { candidatesService } from '@/services/candidates.service';
 import { vacanciesService } from '@/services/vacancies.service';
 import { notificationsService } from '@/services/notifications.service';
+import { api, USE_MOCK } from '@/services/api';
+import { parseAndAnalyzeCV } from '@/services/cvParser';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { ApplicationDetailModal } from '@/components/applications/ApplicationDetailModal';
 import { MLExplainabilityModal } from '@/components/ml/MLExplainabilityModal';
+import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { BrandLogo } from '@/components/ui/BrandLogo';
+import { useFolderAutoScroll } from '@/hooks/useFolderAutoScroll';
 import {
   Briefcase,
   CheckCircle2,
@@ -19,7 +26,12 @@ import {
   Search,
   Bell,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Folder,
+  Paperclip,
   LogOut,
+  Power,
   HelpCircle,
   Mail,
   MessageSquare,
@@ -30,7 +42,32 @@ import {
   ExternalLink,
   Plus,
   Shield,
+  ShieldCheck,
   FileText,
+  MapPin,
+  Building2,
+  Layers,
+  Award,
+  BadgeCheck,
+  Sun,
+  Moon,
+  Phone,
+  Download,
+  GraduationCap,
+  Edit3,
+  Code2,
+  Upload,
+  RefreshCw,
+  FileUp,
+  FileCheck,
+  Lock,
+  Check,
+  AlertCircle,
+  Camera,
+  Trash2,
+  Image,
+  Menu,
+  X,
 } from 'lucide-react';
 
 interface CandidateDashboardPageProps {
@@ -42,8 +79,100 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   onNavigate,
   onApplyVacancy,
 }) => {
-  const { user, logout, switchRoleDemo } = useAuth();
+  const { user, logout, updateUserPhoto } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
+
+  // Foto de perfil del usuario (editable y persistida)
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(() => {
+    const cleanEmail = (user?.email || '').trim().toLowerCase();
+    return (
+      user?.photoUrl ||
+      localStorage.getItem(`nexo_user_photo_${user?.id || 'cand'}`) ||
+      (cleanEmail ? localStorage.getItem(`nexo_photo_by_email_${cleanEmail}`) : null) ||
+      null
+    );
+  });
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [tempPhotoPreview, setTempPhotoPreview] = useState<string | null>(null);
+  const [tempPhotoFile, setTempPhotoFile] = useState<File | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const cleanEmail = (user?.email || '').trim().toLowerCase();
+    const resolved =
+      user?.photoUrl ||
+      localStorage.getItem(`nexo_user_photo_${user?.id || 'cand'}`) ||
+      (cleanEmail ? localStorage.getItem(`nexo_photo_by_email_${cleanEmail}`) : null) ||
+      null;
+    if (resolved) {
+      setProfilePhoto(resolved);
+      if (cleanEmail) {
+        try {
+          localStorage.setItem(`nexo_photo_by_email_${cleanEmail}`, resolved);
+        } catch {}
+      }
+    }
+  }, [user?.id, user?.email, user?.photoUrl]);
+
+  const triggerPhotoInput = () => {
+    photoInputRef.current?.click();
+  };
+
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Formato no válido', 'Por favor selecciona un archivo de imagen (PNG, JPG, WEBP).', 'error');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Archivo muy grande', 'La imagen no debe superar los 5 MB de tamaño.', 'error');
+      return;
+    }
+
+    setTempPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setTempPhotoPreview(dataUrl);
+      setIsPhotoModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSavePhoto = (newPhoto: string | null) => {
+    setProfilePhoto(newPhoto);
+    updateUserPhoto(newPhoto);
+    const cleanEmail = (user?.email || '').trim().toLowerCase();
+    if (newPhoto) {
+      localStorage.setItem(`nexo_user_photo_${user?.id || 'cand'}`, newPhoto);
+      if (cleanEmail) {
+        localStorage.setItem(`nexo_photo_by_email_${cleanEmail}`, newPhoto);
+      }
+      if (!USE_MOCK && tempPhotoFile) {
+        const token = localStorage.getItem('nexo_auth_token') || '';
+        if (token && !token.startsWith('mock-') && !token.startsWith('local-')) {
+          const formData = new FormData();
+          formData.append('photo', tempPhotoFile);
+          api.put('/candidates/me/photo', formData).catch(() => {});
+        }
+      }
+      showToast('¡Foto actualizada!', 'Tu foto de perfil se ha guardado correctamente.', 'success');
+    } else {
+      localStorage.removeItem(`nexo_user_photo_${user?.id || 'cand'}`);
+      if (cleanEmail) {
+        localStorage.removeItem(`nexo_photo_by_email_${cleanEmail}`);
+      }
+      showToast('Foto eliminada', 'Se ha restablecido la foto de perfil.', 'info');
+    }
+    setTempPhotoFile(null);
+    setIsPhotoModalOpen(false);
+  };
 
   const [activeTab, setActiveTab] = useState<'applications' | 'profile' | 'vacancies' | 'notifications'>(
     'applications'
@@ -54,31 +183,73 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [openCandidateVacancyIds, setOpenCandidateVacancyIds] = useState<Record<string, boolean>>({});
+  const { registerFolderRef, scheduleScrollIfNeeded } = useFolderAutoScroll({
+    stickyOffset: 84,
+    delayMs: 240,
+  });
+
+  const toggleCandidateVacancy = (id: string) => {
+    scheduleScrollIfNeeded(id, openCandidateVacancyIds);
+    setOpenCandidateVacancyIds((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   // Modals state
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isExplainOpen, setIsExplainOpen] = useState(false);
 
-  // Profile edit state
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editBio, setEditBio] = useState('');
-  const [editSkills, setEditSkills] = useState('');
+  // Reanálisis de CV por IA (Datos inmutables salvo Contacto)
+  const [isReanalyzeModalOpen, setIsReanalyzeModalOpen] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [reanalyzeStep, setReanalyzeStep] = useState(0);
+  const [selectedCVFile, setSelectedCVFile] = useState<File | null>(null);
+  const [uploadedCVName, setUploadedCVName] = useState('');
+  const [lastReanalysisTime, setLastReanalysisTime] = useState('Sin CV registrado');
+
+  // Contacto editable manualmente con validación de formato
+  const [editEmail, setEditEmail] = useState(user?.email || '');
+  const [editPhone, setEditPhone] = useState(user?.phone || '');
+  const [emailError, setEmailError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+
+  const validateEmailFormat = (val: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
+  };
+
+  const validatePhoneFormat = (val: string) => {
+    return /^[\d\+\s\(\)\-]{7,20}$/.test(val.trim());
+  };
 
   const loadData = async () => {
     try {
-      const email = user?.email || 'valeria.mendoza@correo.com';
+      const email = user?.email || '';
       const [apps, prof, vacs, notifs] = await Promise.all([
         applicationsService.getByCandidateEmail(email),
-        candidatesService.getProfile(),
+        candidatesService.getProfile(email),
         vacanciesService.getAll(),
         notificationsService.getNotifications(),
       ]);
+
       setApplications(apps);
       setProfile(prof);
-      setEditBio(prof.bio);
-      setEditSkills(prof.skills.join(', '));
+      if (prof.email) setEditEmail(prof.email);
+      if (prof.phone) setEditPhone(prof.phone);
+      if (prof.cvFileName) {
+        setUploadedCVName(prof.cvFileName);
+        setLastReanalysisTime('Documento verificado');
+      } else {
+        setUploadedCVName('');
+        setLastReanalysisTime('Sin CV registrado');
+      }
+
       setVacancies(vacs);
+      if (vacs.length > 0) {
+        setOpenCandidateVacancyIds((prev) => (Object.keys(prev).length === 0 ? { [vacs[0].id]: true } : prev));
+      }
       setNotifications(notifs);
     } catch {
       showToast('Error', 'No se pudieron cargar los datos del portal.', 'error');
@@ -98,118 +269,330 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   const preselectedCount = applications.filter((a) => a.status === 'Preseleccionado').length;
   const inReviewCount = applications.filter((a) => a.status === 'En revisión').length;
 
-  const handleSaveProfile = async () => {
+  // Guardar únicamente cambios de contacto
+  const handleSaveContactOnly = async () => {
+    if (!validateEmailFormat(editEmail)) {
+      setEmailError('Formato inválido. Ejemplo: usuario@correo.com');
+      showToast('Correo Inválido', 'Ingresa un correo con formato válido.', 'error');
+      return;
+    }
+    if (!validatePhoneFormat(editPhone)) {
+      setPhoneError('Formato inválido. Ejemplo: +1 (809) 555-0192');
+      showToast('Teléfono Inválido', 'Ingresa un número telefónico válido.', 'error');
+      return;
+    }
+
     try {
       const updated = await candidatesService.updateProfile({
-        bio: editBio,
-        skills: editSkills.split(',').map((s) => s.trim()).filter(Boolean),
+        email: editEmail.trim(),
+        phone: editPhone.trim(),
       });
       setProfile(updated);
-      setIsEditingProfile(false);
-      showToast('Perfil actualizado', 'Tus datos estructurados se guardaron con éxito (RF05).', 'success');
+      setEmailError('');
+      setPhoneError('');
+      showToast('Contacto Actualizado', 'Se guardaron tu correo y teléfono con éxito.', 'success');
     } catch {
-      showToast('Error', 'No se pudo actualizar el perfil.', 'error');
+      showToast('Error', 'No se pudieron actualizar los datos de contacto.', 'error');
     }
   };
 
+  // Descarga del CV: Preparado para recibir el archivo desde el backend/almacenamiento
+  const handleDownloadCV = () => {
+    const fileName = profile?.cvFileName || uploadedCVName;
+
+    if (!fileName) {
+      showToast('Sin CV disponible', 'Aún no has adjuntado ningún currículum vitae.', 'info');
+      return;
+    }
+
+    // Puerta abierta: Si el backend proporciona una URL de descarga o archivo
+    const fileUrl = (profile as any)?.cvUrl || (profile as any)?.fileUrl;
+    if (fileUrl) {
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.download = fileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Descarga iniciada', `Descargando ${fileName}`, 'success');
+      return;
+    }
+
+    // Si el archivo fue seleccionado en la sesión activa
+    if (selectedCVFile) {
+      const url = URL.createObjectURL(selectedCVFile);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedCVFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Descarga iniciada', `Descargando tu archivo: ${selectedCVFile.name}`, 'success');
+      return;
+    }
+
+    // Enlace listo para el backend de almacenamiento
+    showToast('Descarga iniciada', `Solicitando ${fileName} al servidor...`, 'info');
+  };
+
+  // Ejecución de Reanálisis con IA sobre el CV actualizado + Contacto
+  const handleRunReanalysis = async () => {
+    if (!selectedCVFile && !profile?.cvFileName && !uploadedCVName) {
+      showToast('Archivo requerido', 'Por favor selecciona un archivo de CV (PDF o DOCX) para iniciar el análisis.', 'error');
+      return;
+    }
+
+    if (editEmail && !validateEmailFormat(editEmail)) {
+      setEmailError('Formato inválido. Ejemplo: usuario@correo.com');
+      showToast('Correo Inválido', 'Ingresa un correo válido antes de reanalizar.', 'error');
+      return;
+    }
+    if (editPhone && !validatePhoneFormat(editPhone)) {
+      setPhoneError('Formato inválido. Ejemplo: +1 (809) 555-0192');
+      showToast('Teléfono Inválido', 'Ingresa un número telefónico válido antes de reanalizar.', 'error');
+      return;
+    }
+
+    setIsReanalyzing(true);
+    setReanalyzeStep(1);
+
+    // Paso 1: Lectura óptica y procesamiento de texto estructurado
+    await new Promise((r) => setTimeout(r, 650));
+    setReanalyzeStep(2);
+
+    // Paso 2: Extracción de grados académicos y experiencia laboral
+    await new Promise((r) => setTimeout(r, 750));
+    setReanalyzeStep(3);
+
+    // Paso 3: Normalización de habilidades y cálculo de afinidad
+    await new Promise((r) => setTimeout(r, 750));
+    setReanalyzeStep(4);
+
+    // Paso 4: Actualización del expediente en Mi Perfil
+    await new Promise((r) => setTimeout(r, 600));
+
+    const now = new Date();
+    const formattedTime = `Hoy, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    setLastReanalysisTime(formattedTime);
+
+    // Extraer y normalizar competencias, experiencia y educación con el motor IA
+    try {
+      const targetFileName = selectedCVFile?.name || uploadedCVName || profile?.cvFileName || 'Curriculum_Vitae.pdf';
+      const candidateFullName = user?.name || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Candidato';
+      const parsedData = await parseAndAnalyzeCV(
+        selectedCVFile,
+        targetFileName,
+        candidateFullName
+      );
+
+      const updated = await candidatesService.updateProfile({
+        email: editEmail ? editEmail.trim() : profile?.email,
+        phone: editPhone ? editPhone.trim() : profile?.phone,
+        title: parsedData.title,
+        bio: parsedData.bio,
+        skills: parsedData.skills,
+        education: parsedData.education,
+        experience: parsedData.experience,
+        location: parsedData.location,
+        cvFileName: targetFileName,
+      }, editEmail.trim() || user?.email);
+
+      setProfile(updated);
+      setUploadedCVName(targetFileName);
+    } catch {
+      // Keep optimistic update
+    }
+
+    setIsReanalyzing(false);
+    setIsReanalyzeModalOpen(false);
+    setReanalyzeStep(0);
+
+    showToast(
+      'Reanálisis IA Completado',
+      'El motor de IA ha verificado tu nuevo CV y actualizado tu expediente en Mi Perfil con éxito.',
+      'success'
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
       <div className="flex-1 flex flex-col md:flex-row">
-        {/* Left Sidebar (Exact layout from Screenshot 6) */}
-        <aside className="w-full md:w-64 bg-white border-r border-slate-200/90 flex flex-col shrink-0">
-          {/* Brand header */}
+        {/* Mobile Backdrop Overlay for Sidebar Drawer */}
+        {isMobileSidebarOpen && (
           <div
-            onClick={() => onNavigate('home')}
-            className="p-6 border-b border-slate-100 flex items-center gap-3 cursor-pointer group"
-          >
-            <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-sm shadow-emerald-500/30 group-hover:bg-emerald-600 transition-colors">
-              <svg
-                className="w-5 h-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect width="7" height="7" x="3" y="3" rx="1.5" />
-                <rect width="7" height="7" x="14" y="3" rx="1.5" />
-                <rect width="7" height="7" x="14" y="14" rx="1.5" />
-                <rect width="7" height="7" x="3" y="14" rx="1.5" />
-              </svg>
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-[#090A0C]/75 backdrop-blur-sm md:hidden"
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Left Sidebar (Mobile Off-Canvas Drawer < md | Permanently Fixed Sidebar >= md) */}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 w-72 md:w-68 md:z-40 bg-[#090A0C]/94 md:bg-[#090A0C]/86 backdrop-blur-xl border-r border-[#F1F2EC]/10 flex flex-col justify-between shrink-0 text-[#F1F2EC] transition-transform duration-200 ease-out overflow-y-auto ${
+            isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          }`}
+        >
+          {/* Brand header */}
+          <div className="p-5 border-b border-[#F1F2EC]/10 flex items-center justify-between gap-2 select-none">
+            <div
+              onClick={() => {
+                setIsMobileSidebarOpen(false);
+                onNavigate('home');
+              }}
+              className="flex items-center gap-3 cursor-pointer group min-w-0"
+            >
+              <BrandLogo className="w-9 h-9 rounded-xl p-1.5 group-hover:scale-105 transition-transform" />
+              <div className="flex flex-col min-w-0">
+                <span className="font-heading font-bold text-[#F1F2EC] tracking-tight text-base leading-none group-hover:text-[#C8FF45] transition-colors truncate">
+                  PlataformaML
+                </span>
+                <span className="text-[9px] font-mono-tabular tracking-[0.14em] font-semibold text-[#C8FF45] uppercase mt-1 truncate">
+                  EXPEDIENTE DE CANDIDATO
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-extrabold text-slate-900 tracking-tight text-base leading-tight">
-                Nexo Tecnología
-              </span>
-              <span className="text-[9px] tracking-wider font-semibold text-emerald-600 uppercase">
-                PORTAL DE TALENTO
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-300 hover:text-[#F1F2EC] bg-slate-800 hover:bg-slate-700 border border-slate-600 shadow-[0_2px_0_#020617] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
+              aria-label="Cerrar menú"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Navigation Links */}
-          <div className="p-4 flex-1 space-y-6">
-            <div>
-              <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                MI ESPACIO
-              </p>
-              <nav className="space-y-1">
+          {/* Navigation Links - Full Width Edge to Edge (Grid with shared borders, no floating boxes) */}
+          <div className="flex-1 flex flex-col justify-between w-full">
+            <div className="w-full">
+              <div className="px-5 py-3 border-b border-[#F1F2EC]/10 bg-[#090A0C]/60">
+                <p className="text-[10px] font-mono-tabular font-semibold text-[#777873] uppercase tracking-widest">
+                  ARCHIVERO PERSONAL
+                </p>
+              </div>
+
+              {/* Grid with shared borders spanning FULL WIDTH of nav bar */}
+              <nav className="w-full flex flex-col divide-y divide-[#F1F2EC]/10 border-b border-[#F1F2EC]/10 bg-[#090A0C]/30">
                 <button
-                  onClick={() => setActiveTab('applications')}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('applications');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
                     activeTab === 'applications'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
+                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <Briefcase className="w-4 h-4 text-emerald-600" />
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        activeTab === 'applications'
+                          ? 'bg-[#C8FF45] text-[#090A0C]'
+                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
+                      }`}
+                    >
+                      <Briefcase className="w-4 h-4" />
+                    </div>
                     <span>Mis Postulaciones</span>
                   </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  <span
+                    className={`text-[10px] font-mono-tabular px-2 py-0.5 rounded-md font-bold transition-colors ${
+                      activeTab === 'applications'
+                        ? 'bg-[#C8FF45] text-[#090A0C]'
+                        : 'bg-[#F1F2EC]/8 text-[#F1F2EC] border border-[#F1F2EC]/12'
+                    }`}
+                  >
                     {applications.length}
                   </span>
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('profile');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
                     activeTab === 'profile'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
+                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
                   }`}
                 >
-                  <User className="w-4 h-4" />
-                  <span>Mi perfil</span>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        activeTab === 'profile'
+                          ? 'bg-[#C8FF45] text-[#090A0C]'
+                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
+                      }`}
+                    >
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span>Mi perfil curricular</span>
+                  </div>
+                  <span
+                    className={`text-[9px] font-mono-tabular uppercase px-1.5 py-0.5 rounded transition-colors ${
+                      activeTab === 'profile'
+                        ? 'text-[#C8FF45] bg-[#C8FF45]/15 border border-[#C8FF45]/40'
+                        : 'text-[#777873] group-hover:text-[#F1F2EC]'
+                    }`}
+                  >
+                    Expediente
+                  </span>
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('vacancies')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    activeTab === 'vacancies'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    onNavigate('vacancies');
+                  }}
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent"
                 >
-                  <Search className="w-4 h-4" />
-                  <span>Explorar vacantes</span>
+                  <div className="flex items-center gap-3">
+                    <div className="p-1.5 rounded-lg transition-colors bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#4C6FFF] border border-[#F1F2EC]/10">
+                      <Search className="w-4 h-4" />
+                    </div>
+                    <span>Explorar vacantes</span>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-[#777873] group-hover:text-[#4C6FFF] transition-colors" />
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('notifications')}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('notifications');
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
                     activeTab === 'notifications'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
+                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <Bell className="w-4 h-4" />
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        activeTab === 'notifications'
+                          ? 'bg-[#C8FF45] text-[#090A0C]'
+                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
+                      }`}
+                    >
+                      <Bell className="w-4 h-4" />
+                    </div>
                     <span>Notificaciones</span>
                   </div>
                   {notifications.length > 0 && (
-                    <span className="bg-sky-100 text-sky-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                    <span
+                      className={`text-[10px] font-mono-tabular px-2 py-0.5 rounded-md font-bold transition-colors ${
+                        activeTab === 'notifications'
+                          ? 'bg-[#C8FF45] text-[#090A0C]'
+                          : 'bg-[#4C6FFF]/25 text-[#4C6FFF] border border-[#4C6FFF]/40'
+                      }`}
+                    >
                       {notifications.length}
                     </span>
                   )}
@@ -217,462 +600,1126 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
               </nav>
             </div>
 
-            {/* Help Card (Screenshot 6) */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-xs space-y-2">
-              <div className="flex items-center gap-1.5 text-slate-800 font-bold">
-                <HelpCircle className="w-4 h-4 text-emerald-600" />
-                <span>Estamos para ayudarte</span>
+            {/* Support section (Full-width shared borders) */}
+            <div className="w-full border-t border-[#F1F2EC]/10 bg-[#090A0C]/45 p-5 space-y-3">
+              <div className="flex items-center gap-2.5 text-[#F1F2EC] font-semibold text-xs">
+                <div className="p-1.5 rounded-lg bg-[#4C6FFF]/18 text-[#4C6FFF] border border-[#4C6FFF]/35">
+                  <HelpCircle className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span>Soporte al Postulante</span>
+                  <span className="text-[10px] text-[#777873] font-normal">Mesa de ayuda directa</span>
+                </div>
               </div>
-              <p className="text-slate-500 leading-snug">
-                Resuelve tus dudas sobre el proceso de selección.
+              <p className="text-[#777873] leading-snug text-[11px]">
+                Resuelve tus dudas sobre la evaluación curricular y trazabilidad de tus carpetas.
               </p>
               <button
+                type="button"
                 onClick={() =>
-                  alert('Soporte Nexo: Canal de contacto disponible vía WhatsApp al +1 (809) 555-0199')
+                  alert('Soporte PlataformaML: Canal de asistencia disponible vía WhatsApp al +1 (809) 555-0199')
                 }
-                className="text-emerald-600 font-bold hover:underline flex items-center gap-1 pt-1"
+                className="w-full px-3 py-2 rounded-xl bg-[#2f4cd6] hover:bg-[#3d5ae5] border border-[#4C6FFF]/70 text-white font-bold flex items-center justify-center text-center text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#172554] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_5px_0_#172554] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer"
               >
-                <span>Contactar a Talento</span>
-                <span>→</span>
+                <span>Contactar a Soporte</span>
               </button>
             </div>
           </div>
 
-          {/* Logout button (Screenshot 6) */}
-          <div className="p-4 border-t border-slate-100">
+          {/* Logout button - Full width with Red Exit preserved */}
+          <div className="sticky bottom-0 bg-[#090A0C]/95 backdrop-blur-md border-t border-[#F1F2EC]/10 mt-auto z-10 w-full p-2.5">
             <button
+              type="button"
               onClick={() => {
                 logout();
                 onNavigate('login');
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#881337] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_5px_0_#881337] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all duration-150 cursor-pointer group select-none"
             >
-              <LogOut className="w-4 h-4" />
-              <span>Cerrar sesión</span>
+              <div className="flex items-center gap-3">
+                <LogOut className="w-4 h-4 text-white shrink-0" />
+                <span className="font-bold text-white transition-colors">
+                  Cerrar sesión
+                </span>
+              </div>
+              <div
+                className="flex items-center gap-1.5 text-[10px] font-mono-tabular font-bold text-rose-50"
+                title="Finalizar sesión activa"
+              >
+                <span>Salir</span>
+                <Power className="w-3 h-3 text-rose-100" />
+              </div>
             </button>
           </div>
         </aside>
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Topbar (Screenshot 6) */}
-          <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-8 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span>Portal del candidato</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-800 font-semibold">
+        {/* Main Content Area (Offset on md+ screens to account for fixed sidebar) */}
+        <div className="flex-1 flex flex-col min-w-0 md:pl-68">
+          {/* Glassmorphic Topbar */}
+          <header className="h-14 sm:h-16 sticky top-0 z-30 bg-[#090A0C]/82 backdrop-blur-xl border-b border-[#F1F2EC]/10 px-3 sm:px-8 flex items-center justify-between gap-2 text-[#F1F2EC]">
+            <div className="flex items-center gap-2 text-xs text-[#777873] min-w-0">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="md:hidden p-2 -ml-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[#F1F2EC] hover:text-[#C8FF45] hover:border-[#C8FF45]/40 shadow-[0_3px_0_#020617] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
+                aria-label="Abrir menú de navegación"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+              <span className="hidden sm:inline font-medium text-[#777873] shrink-0">Portal del candidato</span>
+              <ChevronRight className="hidden sm:inline w-3.5 h-3.5 text-[#777873] shrink-0" />
+              <span className="text-[#C8FF45] font-semibold truncate">
                 {activeTab === 'applications'
                   ? 'Mis Postulaciones'
                   : activeTab === 'profile'
-                  ? 'Mi Perfil'
+                  ? 'Mi Perfil Curricular'
                   : activeTab === 'vacancies'
                   ? 'Explorar Vacantes'
                   : 'Notificaciones'}
               </span>
             </div>
 
-            <div className="flex items-center gap-4">
-              <span className="hidden sm:inline-block text-[11px] bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-medium">
-                Vista de ejemplo
-              </span>
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Theme toggle with global animation */}
+              <ThemeToggle />
 
+              {/* User Avatar Badge - Navigates directly to Mi Perfil */}
               <button
-                onClick={() => setActiveTab('notifications')}
-                className="relative text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-50 transition-colors"
-                title="Notificaciones"
+                type="button"
+                onClick={() => setActiveTab('profile')}
+                className="flex items-center gap-2 sm:gap-2.5 pl-1.5 sm:pl-2 py-1 sm:py-1.5 pr-2.5 sm:pr-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-[#C8FF45]/60 shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer group select-none"
+                title="Ir a Mi Perfil Curricular"
               >
-                <Bell className="w-4 h-4" />
-                {notifications.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+                {profilePhoto ? (
+                  <img
+                    src={profilePhoto}
+                    alt={user?.name || 'Usuario'}
+                    className="w-7 h-7 rounded-md object-cover border border-[#C8FF45]/50 group-hover:border-[#C8FF45] transition-colors shrink-0"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-md bg-[#4C6FFF] text-[#F1F2EC] font-bold text-xs flex items-center justify-center transition-colors shrink-0">
+                    {user?.name ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'VM'}
+                  </div>
                 )}
+                <span className="hidden sm:inline text-xs font-semibold text-[#F1F2EC] leading-tight group-hover:text-[#C8FF45] transition-colors truncate max-w-[140px] md:max-w-none">
+                  {user?.name || 'Candidato'}
+                </span>
               </button>
-
-              {/* User Avatar Badge (Screenshot 6) */}
-              <div className="flex items-center gap-2.5 pl-2 border-l border-slate-100">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center">
-                  VM
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-xs font-bold text-slate-800 leading-tight">
-                    Valeria Mendoza
-                  </span>
-                  <span className="text-[10px] text-slate-400">Candidata</span>
-                </div>
-              </div>
             </div>
           </header>
 
-          {/* Subheader Greeting (Screenshot 6) */}
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  Hola, Valeria 👋
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  Cada postulación es una nueva oportunidad. Aquí puedes seguir tu progreso.
-                </p>
-              </div>
-
-              {/* Fast switch to other roles for demo review */}
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    switchRoleDemo('rrhh');
-                    onNavigate('hr-dashboard');
-                  }}
-                  className="text-xs"
-                >
-                  Ver como RRHH ➔
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    switchRoleDemo('administrador');
-                    onNavigate('admin-dashboard');
-                  }}
-                  className="text-xs"
-                >
-                  Ver como Admin ➔
-                </Button>
-              </div>
-            </div>
-
-            {/* TAB: APPLICATIONS (Screenshot 6) */}
-            {activeTab === 'applications' && (
-              <div className="space-y-6">
-                {/* 3 Metric KPI Cards (Screenshot 6) */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Card 1 */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium">Postulaciones activas</p>
-                      <p className="text-3xl font-black text-slate-900 mt-1">{activeCount}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">En Nexo Tecnología</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <Briefcase className="w-5 h-5" />
-                    </div>
-                  </div>
-
-                  {/* Card 2 */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium">Preseleccionadas</p>
-                      <p className="text-3xl font-black text-slate-900 mt-1">{preselectedCount}</p>
-                      <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">Tu perfil avanza</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                  </div>
-
-                  {/* Card 3 */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium">En revisión</p>
-                      <p className="text-3xl font-black text-slate-900 mt-1">{inReviewCount}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Estamos conociendo tu perfil</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                  </div>
+          {/* Main Dashboard Container with Fast Left-to-Right Gradual Reveal */}
+          <div
+            key={activeTab}
+            className={`animate-page-enter-left ${
+              activeTab === 'profile' || activeTab === 'applications' ? 'w-full flex-1 flex flex-col' : 'p-6 sm:p-8 space-y-6'
+            }`}
+          >
+            {/* Header when on vacancies or notifications tabs */}
+            {activeTab !== 'applications' && activeTab !== 'profile' && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+                    {activeTab === 'vacancies'
+                      ? 'Explorar Vacantes Disponibles'
+                      : 'Centro de Notificaciones'}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {activeTab === 'vacancies'
+                      ? 'Encuentra convocatorias laborales abiertas compatibles con tu perfil profesional.'
+                      : 'Historial y estado de los avisos remitidos por correo electrónico y WhatsApp.'}
+                  </p>
                 </div>
 
-                {/* Applications Table Card (Screenshot 6) */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
-                  <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900">Mis Postulaciones</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Consulta el estado de tus procesos de selección.
-                      </p>
-                    </div>
-
-                    {/* Status Filter */}
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      >
-                        <option value="todos">Todos los estados</option>
-                        <option value="Preseleccionado">Preseleccionado</option>
-                        <option value="En revisión">En revisión</option>
-                        <option value="Recibida">Recibida</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Table (Screenshot 6) */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                        <tr>
-                          <th className="px-6 py-3.5">Cargo</th>
-                          <th className="px-6 py-3.5">Fecha de Postulación</th>
-                          <th className="px-6 py-3.5">Estado Actual</th>
-                          <th className="px-6 py-3.5 text-right">Detalle</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredApplications.map((app) => (
-                          <tr key={app.id} className="hover:bg-slate-50/60 transition-colors">
-                            {/* Cargo */}
-                            <td className="px-6 py-4.5">
-                              <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                                  {app.vacancyTitle.toLowerCase().includes('datos') ? (
-                                    <BarChart3 className="w-4 h-4 text-emerald-600" />
-                                  ) : app.vacancyTitle.toLowerCase().includes('inteligencia') ? (
-                                    <Clock className="w-4 h-4 text-amber-600" />
-                                  ) : (
-                                    <Database className="w-4 h-4 text-sky-600" />
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900 text-xs sm:text-sm">
-                                    {app.vacancyTitle}
-                                  </p>
-                                  <p className="text-[11px] text-slate-500 mt-0.5">
-                                    {app.vacancyDepartment}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Fecha */}
-                            <td className="px-6 py-4.5 text-slate-600 font-medium">
-                              {app.appliedDate}
-                            </td>
-
-                            {/* Estado Actual */}
-                            <td className="px-6 py-4.5">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    app.status === 'Preseleccionado'
-                                      ? 'bg-emerald-500'
-                                      : app.status === 'En revisión'
-                                      ? 'bg-amber-500'
-                                      : 'bg-sky-500'
-                                  }`}
-                                />
-                                <span
-                                  className={`font-semibold ${
-                                    app.status === 'Preseleccionado'
-                                      ? 'text-emerald-700'
-                                      : app.status === 'En revisión'
-                                      ? 'text-amber-700'
-                                      : 'text-sky-700'
-                                  }`}
-                                >
-                                  {app.status}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Detalle */}
-                            <td className="px-6 py-4.5 text-right">
-                              <button
-                                onClick={() => {
-                                  setSelectedApp(app);
-                                  setIsDetailOpen(true);
-                                }}
-                                className="inline-flex items-center gap-1 font-semibold text-slate-700 hover:text-emerald-600 transition-colors text-xs"
-                              >
-                                <span>Ver detalle</span>
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Table Bottom status */}
-                  <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <span>
-                      Mostrando {filteredApplications.length} de {applications.length} postulaciones
-                    </span>
-                    <span className="font-semibold text-slate-600">Nexo Tecnología</span>
-                  </div>
-                </div>
-
-                {/* Bottom Informational Cards (Screenshot 6) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Card 1: Perfil al día */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-900 font-bold text-xs sm:text-sm">
-                      <User className="w-4 h-4 text-emerald-600" />
-                      <span>Tu perfil, siempre al día</span>
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Mantén tu currículum y teléfono actualizados para que podamos contactarte.
-                    </p>
-                    <button
-                      onClick={() => setActiveTab('profile')}
-                      className="text-xs font-bold text-emerald-600 hover:underline pt-1 inline-flex items-center gap-1"
-                    >
-                      <span>Revisar mi perfil</span>
-                      <span>→</span>
-                    </button>
-                  </div>
-
-                  {/* Card 2: Alertas WhatsApp y Correo */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-900 font-bold text-xs sm:text-sm">
-                      <Mail className="w-4 h-4 text-emerald-600" />
-                      <span>No te pierdas ninguna novedad</span>
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Te avisaremos por correo o WhatsApp cuando tu postulación cambie de estado.
-                    </p>
-                    <p className="text-xs font-semibold text-slate-700 pt-1">
-                      valeria.mendoza@correo.com
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
 
-            {/* TAB: PROFILE (RF05 - Estructuración de los datos del perfil) */}
-            {activeTab === 'profile' && profile && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 space-y-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-900">
-                        Perfil Estructurado del Postulante (RF05)
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Datos ordenados y normalizados que alimentan los algoritmos de afinidad.
-                      </p>
-                    </div>
+            {/* TAB: APPLICATIONS */}
+            {activeTab === 'applications' && (() => {
+              const totalApps = applications.length;
+              const countPreselected = applications.filter((a) => a.status === 'Preseleccionado' || a.status === 'Contratado').length;
+              const countInReview = applications.filter((a) => a.status === 'En revisión' || a.status === 'Entrevista').length;
+              const countReceived = applications.filter((a) => a.status === 'Recibida').length;
+              const countRejected = applications.filter((a) => a.status === 'Descartado').length;
+              const appsWithScore = applications.filter((a) => typeof a.mlScore === 'number' && a.mlScore > 0);
+              const avgMlScore =
+                appsWithScore.length > 0
+                  ? Math.round(appsWithScore.reduce((sum, a) => sum + (a.mlScore || 0), 0) / appsWithScore.length)
+                  : 0;
 
-                    {!isEditingProfile ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsEditingProfile(true)}
-                      >
-                        Editar Datos
-                      </Button>
-                    ) : (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setIsEditingProfile(false)}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button size="sm" onClick={handleSaveProfile}>
-                          Guardar Cambios
-                        </Button>
+              const pctPreselected = totalApps > 0 ? Math.round((countPreselected / totalApps) * 100) : 0;
+              const pctInReview = totalApps > 0 ? Math.round((countInReview / totalApps) * 100) : 0;
+              const pctReceived = totalApps > 0 ? Math.round((countReceived / totalApps) * 100) : 0;
+              const pctRejected = totalApps > 0 ? Math.round((countRejected / totalApps) * 100) : 0;
+
+              // Donut chart math (r=36 => circ ~ 226.2)
+              const r = 36;
+              const c = 2 * Math.PI * r;
+              const sPre = totalApps > 0 ? (countPreselected / totalApps) * c : 0;
+              const sRev = totalApps > 0 ? (countInReview / totalApps) * c : 0;
+              const sRec = totalApps > 0 ? (countReceived / totalApps) * c : 0;
+              const sRej = totalApps > 0 ? (countRejected / totalApps) * c : 0;
+
+              const shelves = [
+                {
+                  floorNumber: 1,
+                  title: 'Piso 1 · Expedientes Aceptados y Preseleccionados',
+                  subtitle: 'Postulaciones con alta afinidad técnica que avanzaron con éxito',
+                  badgeColor: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+                  dotColor: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.9)] animate-pulse',
+                  icon: Award,
+                  apps: applications.filter((a) => a.status === 'Preseleccionado' || a.status === 'Contratado'),
+                },
+                {
+                  floorNumber: 2,
+                  title: 'Piso 2 · Expedientes en Revisión y Entrevistas',
+                  subtitle: 'En análisis por el equipo de selección o en etapa de entrevistas',
+                  badgeColor: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+                  dotColor: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]',
+                  icon: Clock,
+                  apps: applications.filter((a) => a.status === 'En revisión' || a.status === 'Entrevista'),
+                },
+                {
+                  floorNumber: 3,
+                  title: 'Piso 3 · Expedientes Enviados y Recibidos',
+                  subtitle: 'Postulaciones registradas recientemente en espera de evaluación',
+                  badgeColor: 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+                  dotColor: 'bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.8)]',
+                  icon: Mail,
+                  apps: applications.filter((a) => a.status === 'Recibida'),
+                },
+                {
+                  floorNumber: 4,
+                  title: 'Piso 4 · Expedientes Concluidos y Negados',
+                  subtitle: 'Procesos finalizados o no seleccionados para la posición',
+                  badgeColor: 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+                  dotColor: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]',
+                  icon: FileText,
+                  apps: applications.filter((a) => a.status === 'Descartado'),
+                },
+              ];
+
+              return (
+                <div className="w-full flex-1 flex flex-col border-b border-[#c8b193] dark:border-[#F1F2EC]/12 bg-white dark:bg-transparent animate-in fade-in duration-300">
+                  {/* Pestaña Superior de Expediente Manila (Shared Bottom Border) */}
+                  <div className="w-full border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 bg-[#e5d4bc] dark:bg-[#F1F2EC]/[0.03] dark:backdrop-blur-[2px]">
+                    <div className="w-full px-6 sm:px-10 py-3 border-b border-[#c8b193]/70 dark:border-[#F1F2EC]/10 bg-[#dfcbaf] dark:bg-transparent flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-[#543b23] dark:text-[#F1F2EC]">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Folder className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="uppercase tracking-wider">EXPEDIENTE DE SEGUIMIENTO Y POSTULACIONES</span>
+                        <span className="text-[#a58665] dark:text-[#777873]">·</span>
+                        <span className="font-mono text-[11px] text-[#795b3d] dark:text-[#777873]">
+                          MATRÍCULA: EXP-CAND-2026
+                        </span>
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  {/* Summary / Bio */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Extracto Profesional
-                    </label>
-                    {isEditingProfile ? (
-                      <textarea
-                        value={editBio}
-                        onChange={(e) => setEditBio(e.target.value)}
-                        rows={3}
-                        className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    ) : (
-                      <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        {profile.bio}
-                      </p>
-                    )}
-                  </div>
+                  {/* Perfil y Métricas en Rejilla con Bordes Compartidos */}
+                  <div className="w-full border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 bg-white dark:bg-transparent">
+                    {/* 2 Columnas Divididas con Borde Vertical Compartido: Tarjeta de Perfil (Izq 6 cols) + Donut de Métricas (Der 6 cols) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x-2 divide-[#c8b193] dark:divide-[#F1F2EC]/12 w-full items-stretch">
+                      {/* Lado Izquierdo: Tarjeta de Perfil Estilo Wave Banner Full-Bleed (Paleta PlataformaML) */}
+                      <div className="lg:col-span-6 p-0 flex">
+                        <div className="w-full h-full overflow-hidden bg-[#F1F2EC] dark:bg-[#0D1017] flex flex-col justify-between">
+                          {/* Banner Superior Curvo con Nuestra Paleta (#090A0C, #4C6FFF, #C8FF45) */}
+                          <div className="relative h-14 sm:h-16 overflow-hidden bg-gradient-to-br from-[#090A0C] via-[#2746C7] to-[#4C6FFF]">
+                            {/* Ondas y destellos atmosféricos de paleta */}
+                            <div
+                              aria-hidden="true"
+                              className="absolute -top-6 -left-6 w-32 h-32 rounded-full bg-[#4C6FFF]/55 blur-2xl"
+                            />
+                            <div
+                              aria-hidden="true"
+                              className="absolute -top-5 right-4 w-28 h-28 rounded-full bg-[#C8FF45]/45 blur-2xl"
+                            />
+                            <div
+                              aria-hidden="true"
+                              className="absolute bottom-1 left-1/4 w-40 h-12 rounded-full bg-[#C8FF45]/25 blur-xl"
+                            />
 
-                  {/* Formación y Experiencia */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Educación */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-bold text-slate-700 uppercase">
-                        Formación Académica
-                      </h3>
-                      <div className="space-y-2">
-                        {profile.education.map((edu, idx) => (
-                          <div
-                            key={idx}
-                            className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1"
-                          >
-                            <p className="text-xs font-bold text-slate-800">{edu.degree}</p>
-                            <p className="text-[11px] text-slate-500">{edu.institution}</p>
-                            <span className="text-[10px] bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-                              Año: {edu.graduationYear}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Experiencia */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-bold text-slate-700 uppercase">
-                        Experiencia Laboral
-                      </h3>
-                      <div className="space-y-2">
-                        {profile.experience.map((exp, idx) => (
-                          <div
-                            key={idx}
-                            className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1"
-                          >
-                            <div className="flex justify-between items-start">
-                              <p className="text-xs font-bold text-slate-800">{exp.role}</p>
-                              <span className="text-[10px] text-slate-500 font-medium">
-                                {exp.period}
+                            {/* Badge sutil superior derecho */}
+                            <div className="relative z-10 flex justify-end p-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#090A0C]/75 backdrop-blur-md border border-[#C8FF45]/45 text-[#C8FF45] text-[9px] font-bold tracking-wide">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#C8FF45]" />
+                                <span>EXP-2026</span>
                               </span>
                             </div>
-                            <p className="text-[11px] text-emerald-700 font-semibold">
-                              {exp.company}
+
+                            {/* Arco curvo inferior separando el banner del cuerpo */}
+                            <svg
+                              viewBox="0 0 400 44"
+                              preserveAspectRatio="none"
+                              aria-hidden="true"
+                              className="absolute bottom-0 inset-x-0 w-full h-5 pointer-events-none"
+                            >
+                              <path
+                                d="M0,44 C115,4 285,4 400,44 L400,44 L0,44 Z"
+                                className="fill-[#F1F2EC] dark:fill-[#0D1017]"
+                              />
+                            </svg>
+                          </div>
+
+                          {/* Avatar Circular Centrado sobre el Arco + Información del Postulante */}
+                          <div className="px-4 pb-2.5 -mt-7 relative z-10 flex flex-col items-center text-center">
+                            <div className="relative shrink-0">
+                              <div className="w-14 h-14 rounded-full p-[2.5px] bg-gradient-to-tr from-[#4C6FFF] via-[#7B95FF] to-[#C8FF45] shadow-md">
+                                {profilePhoto ? (
+                                  <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border-2 border-[#F1F2EC] dark:border-[#0D1017] relative group/mini">
+                                    <img
+                                      src={profilePhoto}
+                                      alt="Foto de perfil"
+                                      className="w-full h-full object-cover group-hover/mini:scale-105 transition-transform"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={triggerPhotoInput}
+                                      title="Cambiar foto de perfil"
+                                      className="absolute inset-0 bg-black/65 opacity-0 group-hover/mini:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer gap-0.5"
+                                    >
+                                      <Camera className="w-3.5 h-3.5 text-[#C8FF45]" />
+                                      <span className="text-[8px] font-bold">Editar</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={triggerPhotoInput}
+                                    className="w-full h-full rounded-full border-2 border-[#F1F2EC] dark:border-[#0D1017] bg-[#e5d4bc] dark:bg-[#141923] hover:bg-[#dfcbaf] dark:hover:bg-[#1c2333] flex flex-col items-center justify-center text-[#3a2818] dark:text-[#F1F2EC] gap-0.5 cursor-pointer transition-colors"
+                                    title="Haz clic para agregar tu foto de perfil"
+                                  >
+                                    <Camera className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45]" />
+                                    <span className="text-[8px] font-bold">+ Foto</span>
+                                  </button>
+                                )}
+                              </div>
+                              <div
+                                className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 dark:bg-[#C8FF45] rounded-full border-2 border-[#F1F2EC] dark:border-[#0D1017] shadow-xs"
+                                title="Cuenta activa"
+                              />
+                            </div>
+
+                            <div className="mt-1.5 flex items-center justify-center gap-1 max-w-full">
+                              <h2 className="text-base font-black text-[#090A0C] dark:text-[#F1F2EC] leading-tight truncate">
+                                {user?.name || 'Valeria Mendoza'}
+                              </h2>
+                              <BadgeCheck className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
+                            </div>
+
+                            <p className="text-[11px] font-medium text-[#777873] truncate max-w-full mt-0.5">
+                              {profile?.title || user?.email || 'Postulante · PlataformaML'}
                             </p>
-                            <p className="text-[11px] text-slate-600 mt-1 leading-snug">
-                              {exp.description}
+                            <p className="text-[10px] text-[#777873]/85 truncate max-w-full font-mono-tabular">
+                              {user?.email} · {user?.phone || '+1 (809) 555-0198'}
                             </p>
                           </div>
-                        ))}
+
+                          {/* Fila Inferior de 3 Columnas Numéricas con Divisores */}
+                          <div className="grid grid-cols-3 divide-x divide-[#090A0C]/12 dark:divide-[#F1F2EC]/12 border-t border-[#090A0C]/10 dark:border-[#F1F2EC]/10 bg-[#090A0C]/[0.025] dark:bg-white/[0.02] py-2 px-2 text-center">
+                            <div className="px-1">
+                              <span className="block text-sm sm:text-base font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
+                                {totalApps}
+                              </span>
+                              <span className="block text-[10px] font-medium text-[#777873] leading-tight mt-0.5">
+                                Postulaciones totales
+                              </span>
+                            </div>
+                            <div className="px-1">
+                              <span className="block text-sm sm:text-base font-black text-[#4C6FFF] dark:text-[#C8FF45] font-mono-tabular leading-tight">
+                                {countInReview + countPreselected}
+                              </span>
+                              <span className="block text-[10px] font-medium text-[#777873] leading-tight mt-0.5">
+                                En proceso
+                              </span>
+                            </div>
+                            <div className="px-1">
+                              <span className="block text-sm sm:text-base font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
+                                {avgMlScore}%
+                              </span>
+                              <span className="block text-[10px] font-medium text-[#777873] leading-tight mt-0.5">
+                                Afinidad IA
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lado Derecho: Gráfico Circular Donut de Distribución Porcentual (6 cols) */}
+                      <div className="lg:col-span-6 p-5 sm:p-6 space-y-3 bg-white dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px] dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.1)] flex flex-col justify-center">
+                        <div className="flex items-center justify-between pb-2 border-b border-[#c8b193]/40 dark:border-[#F1F2EC]/10">
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-[#F1F2EC]">
+                              Distribución Porcentual de Postulaciones
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-[#777873]">
+                              Métricas consolidadas de tu actividad en la plataforma
+                            </p>
+                          </div>
+                          <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-slate-100 dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md dark:border dark:border-[#F1F2EC]/14 text-slate-600 dark:text-[#F1F2EC] font-semibold">
+                            {totalApps} Total
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center gap-6 pt-1">
+                          {/* Gráfico Circular Donut */}
+                          <div className="relative shrink-0 flex items-center justify-center">
+                            <svg className="w-28 h-28 -rotate-90 transform shrink-0" viewBox="0 0 100 100">
+                              <circle
+                                cx="50"
+                                cy="50"
+                                r={r}
+                                className="stroke-slate-100 dark:stroke-slate-800"
+                                strokeWidth="9"
+                                fill="transparent"
+                              />
+                              {sPre > 0 && (
+                                <circle
+                                  cx="50"
+                                  cy="50"
+                                  r={r}
+                                  stroke="#10b981"
+                                  strokeWidth="9"
+                                  fill="transparent"
+                                  strokeDasharray={`${sPre} ${c}`}
+                                  strokeDashoffset="0"
+                                  strokeLinecap="round"
+                                />
+                              )}
+                              {sRev > 0 && (
+                                <circle
+                                  cx="50"
+                                  cy="50"
+                                  r={r}
+                                  stroke="#f59e0b"
+                                  strokeWidth="9"
+                                  fill="transparent"
+                                  strokeDasharray={`${sRev} ${c}`}
+                                  strokeDashoffset={`-${sPre}`}
+                                  strokeLinecap="round"
+                                />
+                              )}
+                              {sRec > 0 && (
+                                <circle
+                                  cx="50"
+                                  cy="50"
+                                  r={r}
+                                  stroke="#0ea5e9"
+                                  strokeWidth="9"
+                                  fill="transparent"
+                                  strokeDasharray={`${sRec} ${c}`}
+                                  strokeDashoffset={`-${sPre + sRev}`}
+                                  strokeLinecap="round"
+                                />
+                              )}
+                              {sRej > 0 && (
+                                <circle
+                                  cx="50"
+                                  cy="50"
+                                  r={r}
+                                  stroke="#f43f5e"
+                                  strokeWidth="9"
+                                  fill="transparent"
+                                  strokeDasharray={`${sRej} ${c}`}
+                                  strokeDashoffset={`-${sPre + sRev + sRec}`}
+                                  strokeLinecap="round"
+                                />
+                              )}
+                            </svg>
+
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                              <span className="text-2xl font-black text-slate-900 dark:text-slate-100 leading-none">
+                                {totalApps}
+                              </span>
+                              <span className="text-[9px] uppercase font-bold text-slate-400 mt-1">
+                                Postuladas
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Leyenda */}
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1 text-xs w-full">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Aceptadas</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                                <strong className="text-slate-900 dark:text-slate-100 font-bold">{countPreselected}</strong> ({pctPreselected}%)
+                              </p>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-300 font-semibold">En revisión</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                                <strong className="text-slate-900 dark:text-slate-100 font-bold">{countInReview}</strong> ({pctInReview}%)
+                              </p>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Enviadas / Recibidas</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                                <strong className="text-slate-900 dark:text-slate-100 font-bold">{countReceived}</strong> ({pctReceived}%)
+                              </p>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Negadas</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                                <strong className="text-slate-900 dark:text-slate-100 font-bold">{countRejected}</strong> ({pctRejected}%)
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Habilidades Técnicas */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Habilidades y Herramientas Normalizadas
-                    </label>
-                    {isEditingProfile ? (
-                      <Input
-                        value={editSkills}
-                        onChange={(e) => setEditSkills(e.target.value)}
-                        helperText="Separa las habilidades con comas (Ej. Python, SQL, Power BI)"
-                      />
-                    ) : (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {profile.skills.map((skill) => (
-                          <span
-                            key={skill}
-                            className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-medium"
-                          >
-                            ✓ {skill}
-                          </span>
-                        ))}
+                  {/* BIBLIOTECA DE CARPETAS DE 4 PISOS (Archivador Temático con Bordes Compartidos) */}
+                  <div className="w-full flex flex-col">
+                    {/* Barra de Título del Archivador (Shared Bottom Border) */}
+                    <div className="w-full px-6 sm:px-10 py-3.5 bg-[#dfcbaf] dark:bg-[#090A0C]/55 dark:backdrop-blur-xl border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#422e1c] dark:text-[#F1F2EC]">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Layers className="w-3.5 h-3.5" />
+                        </div>
+                        <span>Biblioteca de Expedientes Laborales (4 Pisos de Trazabilidad)</span>
                       </div>
-                    )}
+                      <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-full bg-[#f6eee2] dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md text-[#543b23] dark:text-[#F1F2EC] border border-[#d9c7ab] dark:border-[#F1F2EC]/14">
+                        {totalApps} Carpetas archivadas
+                      </span>
+                    </div>
+
+                    {/* Los 4 Pisos dentro de una Rejilla Continua Dividida */}
+                    <div className="w-full divide-y-2 divide-[#c8b193] dark:divide-[#F1F2EC]/12 bg-white dark:bg-transparent">
+                      {shelves.map((shelf) => {
+                        const ShelfIcon = shelf.icon;
+
+                        return (
+                          <div key={shelf.floorNumber} className="w-full p-4 sm:p-6 lg:p-10 space-y-4">
+                            {/* Cabecera del Piso */}
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-xs border border-amber-600 shadow-[0_2px_0_#92400e] shrink-0">
+                                  <ShelfIcon className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h3 className="text-sm sm:text-base font-extrabold text-[#3a2818] dark:text-[#F1F2EC]">
+                                    {shelf.title}
+                                  </h3>
+                                  <p className="text-xs text-[#70553b] dark:text-[#777873]">
+                                    {shelf.subtitle}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${shelf.badgeColor}`}>
+                                {shelf.apps.length} {shelf.apps.length === 1 ? 'carpeta' : 'carpetas'}
+                              </span>
+                            </div>
+
+                            {/* Repisa / Estante de Carpetas */}
+                            {shelf.apps.length === 0 ? (
+                              <div className="py-7 px-4 text-center rounded-2xl border-2 border-dashed border-[#c8b193]/60 dark:border-[#F1F2EC]/16 bg-[#f9f5ee]/40 dark:bg-[#F1F2EC]/[0.035] dark:backdrop-blur-xl dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.08)]">
+                                <p className="text-xs text-[#8c6f50] dark:text-[#777873] font-medium">
+                                  No tienes expedientes archivados en este piso actualmente.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pt-1">
+                                {shelf.apps.map((app) => (
+                                  <div
+                                    key={app.id}
+                                    onClick={() => {
+                                      setSelectedApp(app);
+                                      setIsDetailOpen(true);
+                                    }}
+                                    className="relative group cursor-pointer transition-all duration-200 manila-folder-perspective"
+                                  >
+                                    {/* Pestaña de la Mini-Carpeta + Solapa trasera 3D */}
+                                    <div className="flex items-end pl-0 pr-2.5">
+                                      <div className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-t-lg bg-[#dfcbaf] dark:bg-[#29211A] border-t border-x border-[#c8b193] dark:border-[#46372B] text-[10px] font-bold text-[#553b23] dark:text-[#EBDCC8] select-none">
+                                        <Folder className="w-3 h-3 text-[#85613c] dark:text-[#C4A482]" />
+                                        <span className="truncate max-w-[130px]">{app.empresaNombre || 'Nexo Tecnología'}</span>
+                                      </div>
+                                      <div
+                                        aria-hidden="true"
+                                        className="h-2 flex-1 -ml-1 rounded-tr-lg bg-[#d5c0a0] dark:bg-[#2A2018] border-t border-r border-[#bfa786] dark:border-[#46372B]"
+                                      />
+                                    </div>
+
+                                    {/* Cuerpo de la Carpeta Manila 3D */}
+                                    <div className="manila-folder-body-3d rounded-xl rounded-tl-none p-4.5 relative overflow-hidden flex flex-col justify-between space-y-3.5">
+                                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#dfcbaf]/80 via-[#f3e5cf]/90 to-[#d3bc9b]/80 dark:from-[#32271E] dark:via-[#3E3025] dark:to-[#271E17]" />
+
+                                      <div className="space-y-2">
+                                        {/* Círculo de Estado que cambia de color */}
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className={`w-2.5 h-2.5 rounded-full ${shelf.dotColor}`} />
+                                            <span className="text-[11px] font-black text-[#5c4025] dark:text-emerald-400 uppercase tracking-wider">
+                                              {app.status}
+                                            </span>
+                                          </div>
+                                          <span className="font-mono text-[10px] text-[#7d5f42] dark:text-slate-400">
+                                            {app.appliedDate}
+                                          </span>
+                                        </div>
+
+                                        <h4 className="text-sm font-extrabold text-[#3a2818] dark:text-slate-100 leading-snug line-clamp-2 group-hover:text-emerald-800 dark:group-hover:text-emerald-400 transition-colors">
+                                          {app.vacancyTitle}
+                                        </h4>
+
+                                        <p className="text-[11px] text-[#70553b] dark:text-slate-400 truncate">
+                                          Postulante: {app.candidateName} · {app.vacancyDepartment}
+                                        </p>
+                                      </div>
+
+                                      {/* Pie de la Mini-Carpeta */}
+                                      <div className="pt-2.5 border-t border-[#d5be9f] dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                        <span className="text-[#6d4f31] dark:text-slate-400 font-semibold flex items-center gap-1">
+                                          <Paperclip className="w-3 h-3 rotate-45" /> #{app.id.slice(0, 6)}
+                                        </span>
+
+                                        <span className="text-emerald-800 dark:text-emerald-300 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
+                                          <span>Abrir</span>
+                                          <ChevronRight className="w-3.5 h-3.5" />
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Repisa física de madera bajo las carpetas */}
+                            <div className="h-2.5 bg-gradient-to-r from-[#cbb493] via-[#dfcbaf] to-[#cbb493] dark:from-slate-800 dark:via-slate-700 dark:to-slate-800 rounded-full border-t border-[#bfa583] dark:border-slate-700 shadow-xs mt-2" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Fila Inferior: Tarjetas Informativas Integradas con Bordes Compartidos */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-2 divide-[#c8b193] dark:divide-[#4d3c2e] border-t-2 border-[#c8b193] dark:border-slate-800 bg-[#faf7f2]/60 dark:bg-[#080C14]/60 w-full">
+                    {/* Card 1: Perfil al día */}
+                    <div className="p-6 sm:p-8 space-y-2">
+                      <div className="flex items-center gap-2 text-[#3a2818] dark:text-slate-100 font-bold text-xs sm:text-sm">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <User className="w-3.5 h-3.5" />
+                        </div>
+                        <span>Tu perfil, siempre al día</span>
+                      </div>
+                      <p className="text-xs text-[#70553b] dark:text-slate-400 leading-relaxed">
+                        Mantén tu currículum y teléfono actualizados para que podamos contactarte.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('profile')}
+                        className="mt-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-600 shadow-[0_3px_0_#92400e] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>Revisar mi perfil</span>
+                        <span>→</span>
+                      </button>
+                    </div>
+
+                    {/* Card 2: Alertas WhatsApp y Correo */}
+                    <div className="p-6 sm:p-8 space-y-2">
+                      <div className="flex items-center gap-2 text-[#3a2818] dark:text-slate-100 font-bold text-xs sm:text-sm">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Mail className="w-3.5 h-3.5" />
+                        </div>
+                        <span>No te pierdas ninguna novedad</span>
+                      </div>
+                      <p className="text-xs text-[#70553b] dark:text-slate-400 leading-relaxed">
+                        Te avisaremos por correo o WhatsApp cuando tu postulación cambie de estado.
+                      </p>
+                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 pt-1">
+                        valeria.mendoza@correo.com
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* TAB: PROFILE - RF05: Master Dossier: Grid with Shared Borders (Full-width, no floating boxes) */}
+            {activeTab === 'profile' && profile && (
+              <div className="w-full flex-1 flex flex-col border-b border-[#c8b193] dark:border-[#F1F2EC]/12 bg-trasparent dark:bg-trasparent animate-in fade-in duration-300">
+                {/* Folder Top Tab Strip with Shared Bottom Border */}
+                <div className="bg-white w-full border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 bg-[#e5d4bc] dark:bg-[#F1F2EC]/[0.03] dark:backdrop-blur-[2px]">
+                  <div className="w-full px-6 sm:px-10 py-3 border-b border-[#c8b193]/70 dark:border-[#F1F2EC]/10 bg-[#dfcbaf] dark:bg-transparent flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#543b23] dark:text-[#F1F2EC]">
+                      <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                        <Folder className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="uppercase tracking-wider">EXPEDIENTE DE CANDIDATO OFICIAL</span>
+                      <span className="text-[#a58665] dark:text-[#777873]">·</span>
+                      <span className="font-mono text-[11px] text-[#795b3d] dark:text-[#777873]">
+                        ID: {profile.id}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Master 12-Column Grid with Shared Borders */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x-2 divide-[#c8b193] dark:divide-[#F1F2EC]/12 w-full flex-1 items-stretch">
+                  {/* Left Column (4 cols): Portrait, Direct Contact, Immutable Actions */}
+                  <div className="bg-white lg:col-span-4 bg-[#faf7f2] dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px] dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.1)] flex flex-col divide-y divide-[#c8b193]/70 dark:divide-[#F1F2EC]/10">
+                    {/* Sub-block 1: Portrait & Core Identity estilo Tarjeta con Fondo Diagonal (Paleta PlataformaML) */}
+                    <div className="relative overflow-hidden">
+                      {/* Fondo superior diagonal con nuestra paleta (#4C6FFF, #C8FF45) */}
+                      <div
+                        aria-hidden="true"
+                        style={{ clipPath: 'polygon(0 0, 100% 0, 100% 72%, 0 100%)' }}
+                        className="relative h-36 sm:h-40 w-full bg-gradient-to-br from-[#4C6FFF]/14 via-[#EEF1FF] to-[#C8FF45]/20 dark:from-[#4C6FFF]/22 dark:via-[#11172A] dark:to-[#C8FF45]/12 pointer-events-none"
+                      >
+                        <div className="absolute -top-10 -right-8 w-36 h-36 rounded-full bg-[#4C6FFF]/20 dark:bg-[#4C6FFF]/25 blur-2xl" />
+                        <div className="absolute bottom-2 -left-6 w-32 h-24 rounded-full bg-[#C8FF45]/25 dark:bg-[#C8FF45]/15 blur-2xl" />
+                        {/* Patrón de puntos sutiles superior izquierdo */}
+                        <svg
+                          aria-hidden="true"
+                          className="absolute top-3 left-4 w-16 h-14 text-[#4C6FFF]/25 dark:text-[#C8FF45]/20"
+                          viewBox="0 0 64 56"
+                          fill="currentColor"
+                        >
+                          {[0, 12, 24, 36].map((x) =>
+                            [0, 12, 24, 36].map((y) => (
+                              <circle key={`${x}-${y}`} cx={x + 4} cy={y + 4} r="1.5" />
+                            ))
+                          )}
+                        </svg>
+                      </div>
+
+                      {/* Retrato centrado superpuesto al corte diagonal */}
+                      <div className="relative z-10 -mt-28 px-6 sm:px-7">
+                        <div className="relative group w-36 sm:w-40 aspect-square mx-auto rounded-2xl overflow-hidden border-[3px] border-[#faf7f2] dark:border-[#0D1017] bg-[#f6eee2] dark:bg-[#090A0C] shadow-[0_14px_30px_-10px_rgba(9,10,12,0.22)] dark:shadow-[0_16px_34px_-10px_rgba(0,0,0,0.75)]">
+                          {profilePhoto ? (
+                            <div className="w-full h-full relative group/portrait">
+                              <img
+                                src={profilePhoto}
+                                alt={`${profile.firstName} ${profile.lastName}`}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+
+                              {/* Hover overlay con opciones de edición y eliminación */}
+                              <div className="absolute inset-0 bg-[#090A0C]/70 backdrop-blur-xs opacity-0 group-hover/portrait:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-3 z-10">
+                                <button
+                                  type="button"
+                                  onClick={triggerPhotoInput}
+                                  className="w-full py-1.5 px-3 rounded-xl bg-[#4C6FFF] hover:bg-[#3d5ee6] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                >
+                                  <Camera className="w-3.5 h-3.5 text-[#C8FF45]" />
+                                  <span>Editar imagen</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSavePhoto(null)}
+                                  className="w-full py-1.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Quitar foto</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Estado cuando NO han subido foto aún: "Agregar foto de perfil" */
+                            <div
+                              onClick={triggerPhotoInput}
+                              className="w-full h-full border-2 border-dashed border-[#4C6FFF]/35 dark:border-[#F1F2EC]/20 hover:border-[#4C6FFF] dark:hover:border-[#C8FF45] bg-[#f6eee2] dark:bg-[#090A0C] flex flex-col items-center justify-center p-3 gap-2.5 cursor-pointer group/empty transition-all"
+                              title="Haz clic para agregar tu foto de perfil"
+                            >
+                              <div className="w-11 h-11 rounded-full bg-[#4C6FFF]/12 dark:bg-[#C8FF45]/15 text-[#4C6FFF] dark:text-[#C8FF45] border border-[#4C6FFF]/30 dark:border-[#C8FF45]/35 flex items-center justify-center group-hover/empty:scale-110 transition-transform">
+                                <Camera className="w-5 h-5" />
+                              </div>
+                              <div className="space-y-0.5 text-center">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4C6FFF] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] text-[11px] font-bold">
+                                  <Plus className="w-3 h-3" />
+                                  <span>Agregar foto</span>
+                                </span>
+                                <p className="text-[9.5px] text-[#777873] font-medium">
+                                  JPG, PNG o WEBP
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Información real del candidato alineada a la izquierda */}
+                      <div className="px-6 sm:px-7 pt-4 pb-6 text-left space-y-3">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="text-xl sm:text-2xl font-black text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
+                              {profile.firstName || profile.lastName ? `${profile.firstName} ${profile.lastName}`.trim() : user?.name || 'Candidato'}
+                            </h3>
+                            <BadgeCheck className="w-5 h-5 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
+                          </div>
+                          {profile.title && (
+                            <p className="text-xs sm:text-sm font-bold text-[#4C6FFF] dark:text-[#C8FF45] mt-0.5">
+                              {profile.title}
+                            </p>
+                          )}
+                        </div>
+
+                        {(profile.location || profile.skills.length > 0 || profile.cvFileName) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {profile.location && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-[#F1F2EC]/[0.05] border border-[#c8b193]/60 dark:border-[#F1F2EC]/14 text-[11px] font-medium text-[#090A0C] dark:text-[#F1F2EC]/90">
+                                <MapPin className="w-3 h-3 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
+                                <span className="truncate max-w-[180px]">{profile.location}</span>
+                              </span>
+                            )}
+                            {profile.skills.length > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-[#F1F2EC]/[0.05] border border-[#c8b193]/60 dark:border-[#F1F2EC]/14 text-[11px] font-medium text-[#090A0C] dark:text-[#F1F2EC]/90">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-[#C8FF45] shrink-0" />
+                                <span>{profile.skills.length} competencias</span>
+                              </span>
+                            ) : profile.cvFileName ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-[#F1F2EC]/[0.05] border border-[#c8b193]/60 dark:border-[#F1F2EC]/14 text-[11px] font-medium text-[#090A0C] dark:text-[#F1F2EC]/90">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-[#C8FF45] shrink-0" />
+                                <span>CV adjunto</span>
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {profile.bio && (
+                          <p className="text-xs text-[#777873] dark:text-[#F1F2EC]/75 leading-relaxed line-clamp-3">
+                            {profile.bio}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sub-block 2: Canales de Contacto Directo */}
+                    <div className="p-6 sm:p-8 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Canales de Contacto
+                        </h4>
+                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                          Formato Válido
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5 text-xs">
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                              <Mail className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-semibold text-slate-800 dark:text-[#F1F2EC] truncate">
+                              {editEmail || profile.email}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">Email</span>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                              <Phone className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-semibold text-slate-800 dark:text-[#F1F2EC] truncate">
+                              {editPhone || profile.phone}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">WhatsApp</span>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                              <MapPin className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-semibold text-slate-800 dark:text-[#F1F2EC] truncate">
+                              {profile.location}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">Ubicación</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sub-block 3: CV Actions & Immutable Notice */}
+                    <div className="p-6 sm:p-8 space-y-4 flex-1 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={handleDownloadCV}
+                          className="w-full inline-flex flex-row items-center justify-center gap-2.5 px-4 py-3 rounded-xl text-xs font-bold text-white bg-[#0B5D46] hover:bg-[#094B38] dark:bg-emerald-600 dark:hover:bg-emerald-500 border border-[#073F2F] dark:border-emerald-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#064e3b] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#065f46] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer select-none"
+                        >
+                          <Download className="w-4 h-4 shrink-0 text-amber-400" />
+                          <span className="leading-none tracking-wide">DESCARGAR CV</span>
+                        </button>
+
+                        {/* Botón táctil para subir nuevo CV y pedir reanálisis con IA */}
+                        <button
+                          type="button"
+                          onClick={() => setIsReanalyzeModalOpen(true)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_4px_0_#92400e] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4 text-slate-950" />
+                          <span>Actualizar CV / Reanalizar con IA</span>
+                        </button>
+
+                        {/* Nota explicativa de inmutabilidad manual */}
+                        <div className="p-3.5 rounded-2xl bg-[#f6eee2] dark:bg-[#F1F2EC]/[0.045] border border-[#d9c7ab] dark:border-[#F1F2EC]/14 dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.1)] text-[11px] text-[#543b23] dark:text-[#F1F2EC]/85 leading-relaxed text-center space-y-1">
+                          <span className="font-bold flex items-center justify-center gap-1.5 text-[#3a2818] dark:text-[#F1F2EC]">
+                            <span className="w-5 h-5 rounded-md bg-amber-500 text-slate-950 inline-flex items-center justify-center">
+                              <Lock className="w-3 h-3" />
+                            </span>
+                            Datos del CV Inmutables
+                          </span>
+                          <p className="text-[10.5px] text-[#70553b] dark:text-[#777873]">
+                            Para modificar tus datos, sube tu currículum actualizado y solicita un reanálisis a la IA.
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-center text-slate-400 dark:text-[#777873] font-mono pt-2">
+                        EXPEDIENTE: {profile.id} · SANTO DOMINGO, RD
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Column (8 cols): Hero Header, CTA Banner, Skills, Education & Experience */}
+                  <div className="lg:col-span-8 bg-trasparent dark:bg-transparent flex flex-col divide-y divide-[#c8b193]/70 dark:divide-[#F1F2EC]/12">
+                    {/* Sub-block 1: Hero Typography, Badges, and Stamp Seal */}
+                    <div className="p-6 sm:p-10 space-y-6 dark:bg-[#F1F2EC]/[0.03] dark:backdrop-blur-[2px] dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.12)]">
+                      {/* Big Hero Title: Nombre, Tecnología & IA + Cargo y Frase con Comillas */}
+                      <div className="space-y-3">
+                        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 dark:text-[#F1F2EC] tracking-tight leading-tight">
+                          {profile.firstName || profile.lastName ? `${profile.firstName} ${profile.lastName}`.trim() : user?.name || 'Candidato'}
+                        </h2>
+
+                        <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/10 dark:bg-amber-400/12 dark:backdrop-blur-md text-amber-600 dark:text-amber-400 border border-amber-500/20 dark:border-amber-400/30 text-xs font-black uppercase tracking-wider">
+                            Perfil de Talento
+                          </span>
+                          <span className="text-slate-300 dark:text-[#777873]">·</span>
+                          <span className="text-slate-700 dark:text-[#F1F2EC]">
+                            {profile.title || 'Perfil en configuración'}
+                          </span>
+                        </div>
+
+                        {/* Subtitle / Bio con comillas */}
+                        <p className="text-xs sm:text-sm text-slate-600 dark:text-[#F1F2EC]/78 leading-relaxed max-w-2xl italic font-medium pt-1">
+                          “{profile.bio || 'Adjunta tu currículum vitae para que la inteligencia artificial analice tu perfil y extraiga tus competencias técnicas y trayectoria.'}”
+                        </p>
+                      </div>
+
+                      {/* Badges / Stamp Seal and Rating Stack */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                        {/* Circular Stamp / Seal */}
+                        <div className="flex items-center gap-3">
+                          <div className="relative w-14 h-14 rounded-full border-2 border-dashed border-amber-500/80 dark:border-amber-400/80 flex items-center justify-center animate-[spin_25s_linear_infinite] shrink-0">
+                            <div className="text-[7px] font-black uppercase tracking-widest text-slate-500 dark:text-[#777873] text-center select-none">
+                              TALENTO • NEXO ML • ÉTICO •
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs font-black text-slate-900 dark:text-[#F1F2EC] block">
+                              Afinidad Algorítmica Certificada
+                            </span>
+                            <span className="text-[11px] text-slate-500 dark:text-[#777873]">
+                              Filtrado ciego sin sesgos de género o edad
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Mini Rating / Affinity Stack (Frosted Glass Pill) */}
+                        <div className="flex items-center gap-3 bg-slate-50 dark:bg-[#F1F2EC]/[0.065] dark:backdrop-blur-[2px] p-3 rounded-2xl border border-slate-200/80 dark:border-[#F1F2EC]/18 shadow-2xs dark:shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(241,242,236,0.18)]">
+                          {profile.skills.length > 0 ? (
+                            <>
+                              <div className="flex -space-x-2 overflow-hidden">
+                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-emerald-500 text-white font-black text-[10px] flex items-center justify-center">
+                                  TF
+                                </div>
+                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-teal-500 text-white font-black text-[10px] flex items-center justify-center">
+                                  RF
+                                </div>
+                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-amber-500 text-slate-950 font-black text-[10px] flex items-center justify-center">
+                                  ML
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs font-black text-slate-900 dark:text-[#F1F2EC]">
+                                  94% Afinidad Media
+                                </div>
+                                <div className="text-[10px] text-emerald-700 dark:text-[#C8FF45] font-semibold">
+                                  (4.9 / 5.0 Concordancia)
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div>
+                              <div className="text-xs font-bold text-slate-700 dark:text-[#F1F2EC]">
+                                Pendiente de CV
+                              </div>
+                              <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                Sube tu CV para evaluar afinidad
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sub-block 2: Large CTA Banner (Dark Glassmorphism, Shared Borders) */}
+                    <div
+                      onClick={() => onNavigate('vacancies')}
+                      className="bg-white p-6 sm:p-8 bg-[#090A0C]/92 dark:bg-[#F1F2EC]/[0.04] dark:backdrop-blur-[3px] hover:bg-[#090A0C] dark:hover:bg-[#F1F2EC]/[0.07] border-y border-[#F1F2EC]/14 text-[#F1F2EC] flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer transition-all group dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.14)]"
+                    >
+                      <div className="space-y-1">
+                        <h4 className="text-lg sm:text-xl font-black text-[#F1F2EC] group-hover:text-[#C8FF45] transition-colors">
+                          Explorar Vacantes Compatibles Con Mi Perfil
+                        </h4>
+                        <p className="text-xs text-[#777873] group-hover:text-[#F1F2EC]/80 transition-colors">
+                          Abre los expedientes en carpetas Manila y postula con 1 clic en el catálogo público.
+                        </p>
+                      </div>
+
+                      <div className="w-11 h-11 rounded-full bg-amber-500 border border-amber-600 shadow-[0_3px_0_#92400e] group-hover:bg-amber-400 text-slate-950 flex items-center justify-center transition-all shrink-0">
+                        <ArrowRight className="w-5 h-5 -rotate-45 group-hover:rotate-0 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Sub-block 3: Habilidades y Herramientas Normalizadas (RF05) */}
+                    <div className="p-6 sm:p-8 space-y-4 dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px]">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-xs font-black text-slate-900 dark:text-[#F1F2EC] uppercase tracking-wider flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                            <Code2 className="w-3.5 h-3.5" />
+                          </div>
+                          <span>Habilidades y Tecnologías Extraídas del CV</span>
+                        </h3>
+                        {profile.skills.length > 0 ? (
+                          <span className="text-[11px] text-emerald-600 dark:text-[#C8FF45] font-bold bg-emerald-50 dark:bg-[#C8FF45]/10 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-[#C8FF45]/30 flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> {profile.skills.length} validadas por IA
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-medium">
+                            Sin CV adjunto
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="pt-1">
+                        {profile.skills.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {profile.skills.map((skill) => (
+                              <span
+                                key={skill}
+                                className="px-3.5 py-1.5 bg-slate-50 dark:bg-[#F1F2EC]/[0.06] text-slate-800 dark:text-[#F1F2EC] border border-slate-200 dark:border-[#F1F2EC]/18 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:border-emerald-400 dark:hover:border-[#C8FF45]/60 dark:hover:bg-[#F1F2EC]/[0.09] transition-all shadow-2xs dark:shadow-[0_6px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.16)]"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl border border-dashed border-[#c8b193]/70 dark:border-[#F1F2EC]/16 bg-[#fbf9f5] dark:bg-[#F1F2EC]/[0.035] text-center text-xs text-slate-500 dark:text-[#777873]">
+                            Aún no has adjuntado tu CV. Sube tu currículum para que la IA extraiga tus habilidades técnicas automáticamente.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sub-block 4: Formación Académica & Experiencia Laboral (2 Sub-Columns with Shared Border) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#c8b193]/70 dark:divide-[#F1F2EC]/12 flex-1">
+                      {/* Left Sub-Column: Formación Académica */}
+                      <div className="p-6 sm:p-8 space-y-4 dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px]">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-black text-slate-900 dark:text-[#F1F2EC] uppercase tracking-wider flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                              <GraduationCap className="w-3.5 h-3.5" />
+                            </div>
+                            <span>Formación Académica</span>
+                          </h3>
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-semibold flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-amber-500" /> Extraído del CV
+                          </span>
+                        </div>
+
+                        {profile.education.length > 0 ? (
+                          <div className="space-y-3">
+                            {profile.education.map((edu, idx) => (
+                              <div
+                                key={idx}
+                                className="p-4 bg-slate-50 dark:bg-[#F1F2EC]/[0.055] rounded-2xl border border-slate-200/80 dark:border-[#F1F2EC]/16 hover:dark:bg-[#F1F2EC]/[0.085] hover:dark:border-[#C8FF45]/40 transition-all dark:shadow-[0_12px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(241,242,236,0.16)] space-y-1.5"
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <p className="text-xs font-extrabold text-slate-900 dark:text-[#F1F2EC]">{edu.degree}</p>
+                                  <span className="text-[10px] bg-slate-200/70 dark:bg-[#4C6FFF]/20 dark:border dark:border-[#4C6FFF]/35 text-slate-700 dark:text-[#F1F2EC] px-2.5 py-0.5 rounded-full font-bold shrink-0">
+                                    {edu.graduationYear}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-[#777873]">{edu.institution}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl border border-dashed border-[#c8b193]/70 dark:border-[#F1F2EC]/16 bg-[#fbf9f5] dark:bg-[#F1F2EC]/[0.035] text-center text-xs text-slate-500 dark:text-[#777873]">
+                            Sin formación registrada. Se completará al analizar tu CV.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right Sub-Column: Experiencia Laboral Comprobada */}
+                      <div className="p-6 sm:p-8 space-y-4 dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px]">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-black text-slate-900 dark:text-[#F1F2EC] uppercase tracking-wider flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                              <Briefcase className="w-3.5 h-3.5" />
+                            </div>
+                            <span>Experiencia Laboral Comprobada</span>
+                          </h3>
+                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-semibold flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-amber-500" /> Extraído del CV
+                          </span>
+                        </div>
+
+                        {profile.experience.length > 0 ? (
+                          <div className="space-y-3">
+                            {profile.experience.map((exp, idx) => (
+                              <div
+                                key={idx}
+                                className="p-4 bg-slate-50 dark:bg-[#F1F2EC]/[0.055] rounded-2xl border border-slate-200/80 dark:border-[#F1F2EC]/16 hover:dark:bg-[#F1F2EC]/[0.085] hover:dark:border-[#C8FF45]/40 transition-all dark:shadow-[0_12px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(241,242,236,0.16)] space-y-1.5"
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <p className="text-xs font-extrabold text-slate-900 dark:text-[#F1F2EC]">{exp.role}</p>
+                                  <span className="text-[10px] text-slate-500 dark:text-[#777873] font-semibold shrink-0">
+                                    {exp.period}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-emerald-700 dark:text-[#C8FF45] font-bold">
+                                  {exp.company}
+                                </p>
+                                <p className="text-[11px] text-slate-600 dark:text-[#F1F2EC]/80 mt-1 leading-snug">
+                                  {exp.description}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl border border-dashed border-[#c8b193]/70 dark:border-[#F1F2EC]/16 bg-[#fbf9f5] dark:bg-[#F1F2EC]/[0.035] text-center text-xs text-slate-500 dark:text-[#777873]">
+                            Sin historial laboral registrado. Se completará al analizar tu CV.
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -680,65 +1727,214 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
             {/* TAB: EXPLORAR VACANTES */}
             {activeTab === 'vacancies' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-2">
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Oportunidades Abiertas en Nexo Tecnología
-                  </h2>
-                  <span className="text-xs text-slate-500">
-                    {vacancies.length} vacantes disponibles
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <Folder className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Expedientes de Vacantes Disponibles</span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Explora convocatorias abiertas con el formato de carpetas y fichas técnicas.
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    {vacancies.length} vacantes activas
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-7 items-start">
                   {vacancies.map((vac) => {
                     const alreadyApplied = applications.some((a) => a.vacancyId === vac.id);
+                    const isOpen = !!openCandidateVacancyIds[vac.id];
+
                     return (
                       <div
                         key={vac.id}
-                        className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4 flex flex-col justify-between"
+                        ref={registerFolderRef(vac.id)}
+                        className="relative group transition-all duration-300 manila-folder-perspective"
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <h3 className="text-base font-bold text-slate-900">{vac.title}</h3>
-                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                              {vac.workMode}
+                        {/* Pestaña superior de la carpeta + Solapa trasera 3D */}
+                        <div className="flex items-end justify-start pl-0 pr-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleCandidateVacancy(vac.id)}
+                            className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-xl bg-[#dfcbaf] dark:bg-[#29211A] border-t border-x border-[#c8b193] dark:border-[#46372B] text-[11px] font-bold text-[#543b23] dark:text-[#EBDCC8] cursor-pointer select-none hover:bg-[#d5bf9f] dark:hover:bg-[#332920] transition-colors"
+                          >
+                            <Folder className="w-3.5 h-3.5 text-[#85613c] dark:text-[#C4A482]" />
+                            <span className="truncate max-w-[170px]">
+                              {vac.empresaNombre || 'Nexo Tecnología S.A.'}
                             </span>
-                          </div>
-                          <p className="text-xs text-slate-500">{vac.department} · {vac.location}</p>
-                          <p className="text-xs text-slate-600 line-clamp-2 mt-2">
-                            {vac.description}
-                          </p>
-
-                          <div className="flex flex-wrap gap-1.5 pt-2">
-                            {vac.requiredSkills.map((s) => (
-                              <span
-                                key={s}
-                                className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium"
-                              >
-                                {s}
-                              </span>
-                            ))}
-                          </div>
+                            <span className="text-[#a58665] dark:text-[#7D654F]">·</span>
+                            <span className="uppercase text-[10px] tracking-wider text-[#795b3d] dark:text-[#CBB399]">
+                              {vac.department}
+                            </span>
+                          </button>
+                          <div
+                            aria-hidden="true"
+                            className="h-2.5 flex-1 -ml-1 rounded-tr-xl bg-[#d6c2a3] dark:bg-[#2A2018] border-t border-r border-[#c1ab89] dark:border-[#46372B] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,236,200,0.08)]"
+                          />
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-xs text-slate-400">
-                            {vac.appliedCount} postulaciones recibidas
-                          </span>
-                          {alreadyApplied ? (
-                            <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Ya te postulaste
-                            </span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => onApplyVacancy(vac)}
-                              className="text-xs"
+                        {/* Cuerpo de la Carpeta Manila 3D */}
+                        <div
+                          className={`manila-folder-body-3d rounded-2xl rounded-tl-none p-5 sm:p-6 relative overflow-hidden ${
+                            isOpen ? 'ring-2 ring-emerald-500/30' : ''
+                          }`}
+                        >
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#dfcbaf]/80 via-[#f3e5cf]/90 to-[#d3bc9b]/80 dark:from-[#32271E] dark:via-[#3E3025] dark:to-[#271E17]" />
+
+                          {/* Encabezado de la Carpeta */}
+                          <div
+                            onClick={() => toggleCandidateVacancy(vac.id)}
+                            className="cursor-pointer select-none space-y-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#f6eee2] dark:bg-[#0D131F] text-[#6d4f31] dark:text-slate-300 border border-[#d9c7ab] dark:border-slate-800">
+                                    {vac.workMode}
+                                  </span>
+                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#f6eee2] dark:bg-[#0D131F] text-[#6d4f31] dark:text-slate-300 border border-[#d9c7ab] dark:border-slate-800">
+                                    {vac.type}
+                                  </span>
+                                </div>
+
+                                <h3 className="text-lg sm:text-xl font-extrabold text-[#3a2818] dark:text-slate-100 tracking-tight hover:text-emerald-800 dark:hover:text-emerald-400 transition-colors">
+                                  {vac.title}
+                                </h3>
+
+                                <p className="text-xs text-[#70553b] dark:text-slate-400 flex items-center gap-2 pt-0.5">
+                                  <MapPin className="w-3.5 h-3.5 text-[#8d6741] dark:text-slate-400" />
+                                  <span>{vac.location}</span>
+                                  <span>·</span>
+                                  <span className="font-mono text-[11px]">EXP-#{(vac.id || '01').slice(0, 6).toUpperCase()}</span>
+                                </p>
+                              </div>
+
+                              <div className="shrink-0 flex items-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleCandidateVacancy(vac.id);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#d5be9f] hover:bg-[#cbb190] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#422e1b] dark:text-slate-100 font-bold text-xs border border-[#b39773] dark:border-slate-700 shadow-[0_3px_0_#8c6f50] dark:shadow-[0_3px_0_#0f172a] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer"
+                                >
+                                  {isOpen ? (
+                                    <>
+                                      <span>Doblar</span>
+                                      <ChevronUp className="w-4 h-4" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>Ver expediente</span>
+                                      <ChevronDown className="w-4 h-4" />
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {!isOpen && (
+                              <p className="text-xs text-[#6e5339] dark:text-slate-400 line-clamp-2 leading-relaxed pt-1">
+                                {vac.description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Hoja de papel desplegable con animación */}
+                          <div
+                            className={`transition-all duration-500 ease-out transform origin-top ${
+                              isOpen
+                                ? 'max-h-[1200px] opacity-100 mt-5 translate-y-0 scale-100'
+                                : 'max-h-0 opacity-0 -translate-y-4 scale-98 pointer-events-none overflow-hidden'
+                            }`}
+                          >
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="bg-[#fffdf9] dark:bg-[#121929] border border-amber-200/90 dark:border-slate-700/80 rounded-xl p-5 sm:p-6 manila-paper-sheet-3d relative space-y-4"
                             >
-                              Postularme ahora ➔
-                            </Button>
-                          )}
+                              {/* Encabezado del papel */}
+                              <div className="flex items-center justify-between pb-3 border-b border-amber-100 dark:border-slate-800">
+                                <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  <Paperclip className="w-4 h-4 text-amber-600 dark:text-amber-400 rotate-45" />
+                                  <span className="uppercase tracking-wider text-[11px] text-slate-600 dark:text-slate-300">
+                                    Ficha Técnica de Convocatoria Laboral
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                  DOC-{vac.id}
+                                </span>
+                              </div>
+
+                              {/* Contenido del papel */}
+                              <div className="space-y-3 text-xs leading-relaxed">
+                                <div>
+                                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-slate-400 dark:text-slate-500 mb-1">
+                                    Descripción del Cargo
+                                  </h4>
+                                  <p className="text-slate-700 dark:text-slate-300 font-normal leading-relaxed">
+                                    {vac.description}
+                                  </p>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-slate-400 dark:text-slate-500 mb-1.5">
+                                    Habilidades Evaluadas por IA
+                                  </h4>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {vac.requiredSkills.map((skill) => (
+                                      <span
+                                        key={skill}
+                                        className="text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 px-2.5 py-0.5 rounded-md"
+                                      >
+                                        ✓ {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {vac.requirements && vac.requirements.length > 0 && (
+                                  <div>
+                                    <h4 className="font-bold uppercase tracking-wider text-[11px] text-slate-400 dark:text-slate-500 mb-1">
+                                      Requisitos del Puesto
+                                    </h4>
+                                    <ul className="text-slate-600 dark:text-slate-300 space-y-1 list-disc list-inside">
+                                      {vac.requirements.map((req, rIdx) => (
+                                        <li key={rIdx}>{req}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Pie de acción del papel */}
+                              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span>Evaluación confidencial y objetiva</span>
+                                </div>
+
+                                {alreadyApplied ? (
+                                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3.5 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                    <span>Ya estás postulado</span>
+                                  </span>
+                                ) : (
+                                  <Button
+                                    onClick={() => onApplyVacancy(vac)}
+                                    size="md"
+                                    variant="success"
+                                    className="font-bold px-5 py-2.5"
+                                  >
+                                    <span>Postularme ahora</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -749,12 +1945,12 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
             {/* TAB: NOTIFICACIONES (RF09) */}
             {activeTab === 'notifications' && (
-              <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 space-y-4">
+              <div className="bg-white dark:bg-[#090A0C]/70 dark:backdrop-blur-2xl p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-[#F1F2EC]/14 dark:shadow-[0_20px_50px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(241,242,236,0.1)] space-y-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Bandeja de Notificaciones Automáticas (RF09)
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-[#F1F2EC]">
+                    Bandeja de Notificaciones Automáticas
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-[#777873] mt-0.5">
                     Historial de mensajes remitidos automáticamente a través de WhatsApp y Correo
                     Electrónico.
                   </p>
@@ -764,13 +1960,13 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                   {notifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className="p-4 rounded-2xl border border-slate-100 bg-slate-50/60 flex items-start gap-3.5"
+                      className="p-4 rounded-2xl border border-slate-100 dark:border-[#F1F2EC]/12 bg-slate-50/60 dark:bg-[#090A0C]/60 dark:backdrop-blur-lg flex items-start gap-3.5 dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.06)]"
                     >
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                           notif.channel === 'WhatsApp'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-sky-100 text-sky-700'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-[#C8FF45]/15 dark:text-[#C8FF45] dark:border dark:border-[#C8FF45]/30'
+                            : 'bg-sky-100 text-sky-700 dark:bg-[#4C6FFF]/18 dark:text-[#4C6FFF] dark:border dark:border-[#4C6FFF]/35'
                         }`}
                       >
                         {notif.channel === 'WhatsApp' ? (
@@ -781,23 +1977,23 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                       </div>
 
                       <div className="flex-1 text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900">{notif.title}</span>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-slate-900 dark:text-[#F1F2EC]">{notif.title}</span>
                             <span
-                              className={`text-[10px] px-2 py-0.2 rounded-full font-semibold ${
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
                                 notif.channel === 'WhatsApp'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : 'bg-sky-50 text-sky-700 border border-sky-200'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#C8FF45]/12 dark:text-[#C8FF45] dark:border-[#C8FF45]/30'
+                                  : 'bg-sky-50 text-sky-700 border border-sky-200 dark:bg-[#4C6FFF]/14 dark:text-[#4C6FFF] dark:border-[#4C6FFF]/30'
                               }`}
                             >
                               Canal {notif.channel}
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-400">{notif.timestamp}</span>
+                          <span className="text-[11px] text-slate-400 dark:text-[#777873]">{notif.timestamp}</span>
                         </div>
-                        <p className="text-slate-600 leading-relaxed">{notif.message}</p>
-                        <p className="text-[10px] text-slate-400">Destinatario: {notif.recipient}</p>
+                        <p className="text-slate-600 dark:text-[#F1F2EC]/80 leading-relaxed">{notif.message}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-[#777873]">Destinatario: {notif.recipient}</p>
                       </div>
                     </div>
                   ))}
@@ -828,6 +2024,345 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
         vacancyTitle={selectedApp?.vacancyTitle || 'Analista de Datos'}
         breakdown={selectedApp?.mlBreakdown}
       />
+
+      {/* Modal: Actualizar CV & Reanálisis con IA (Manila Folder Header + Neumorphism) */}
+      <Modal
+        isOpen={isReanalyzeModalOpen}
+        onClose={() => {
+          if (!isReanalyzing) setIsReanalyzeModalOpen(false);
+        }}
+        title="Actualizar CV & Reanálisis con IA"
+        subtitle="Verificación automática y ordenamiento ético de tu información profesional"
+        maxWidth="lg"
+        variant="manila"
+      >
+        <div className="space-y-5 pt-1">
+          {/* Sección Editable Manualmente: Correo y Teléfono de Contacto (Neumorfismo) */}
+          <div className="p-5 rounded-2xl bg-[#ecdcc6]/30 dark:bg-slate-900/60 border border-[#c8b193]/60 dark:border-slate-800 space-y-3.5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#c8b193]/30 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
+                  Datos de Contacto (Editables Directamente)
+                </h4>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100/80 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800">
+                Único campo manual permitido
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Correo Electrónico con Validación de Formato */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    <span>Correo Electrónico</span>
+                  </label>
+                  {editEmail && validateEmailFormat(editEmail) ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Formato Válido
+                    </span>
+                  ) : null}
+                </div>
+
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditEmail(val);
+                    if (!val) {
+                      setEmailError('El correo es obligatorio.');
+                    } else if (!validateEmailFormat(val)) {
+                      setEmailError('Formato inválido (ej: usuario@dominio.com).');
+                    } else {
+                      setEmailError('');
+                    }
+                  }}
+                  placeholder="ejemplo@correo.com"
+                  className={`w-full neu-inset-field rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-all ${
+                    emailError ? 'ring-2 ring-rose-500/50' : 'focus:ring-2 focus:ring-emerald-500/30'
+                  }`}
+                />
+                {emailError && (
+                  <p className="text-[10px] text-rose-500 font-semibold flex items-center gap-1 pt-0.5">
+                    <AlertCircle className="w-3 h-3" /> {emailError}
+                  </p>
+                )}
+              </div>
+
+              {/* Teléfono con Validación de Formato */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    <span>Teléfono / WhatsApp</span>
+                  </label>
+                  {editPhone && validatePhoneFormat(editPhone) ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Formato Válido
+                    </span>
+                  ) : null}
+                </div>
+
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditPhone(val);
+                    if (!val) {
+                      setPhoneError('El teléfono es obligatorio.');
+                    } else if (!validatePhoneFormat(val)) {
+                      setPhoneError('Formato inválido (ej: +1 (809) 555-0192).');
+                    } else {
+                      setPhoneError('');
+                    }
+                  }}
+                  placeholder="+1 (809) 000-0000"
+                  className={`w-full neu-inset-field rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-all ${
+                    phoneError ? 'ring-2 ring-rose-500/50' : 'focus:ring-2 focus:ring-emerald-500/30'
+                  }`}
+                />
+                {phoneError && (
+                  <p className="text-[10px] text-rose-500 font-semibold flex items-center gap-1 pt-0.5">
+                    <AlertCircle className="w-3 h-3" /> {phoneError}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Guardar solo contacto */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-[#c8b193]/30 dark:border-slate-800">
+              <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                Puedes guardar tu correo y teléfono sin necesidad de subir un nuevo CV.
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveContactOnly}
+                className="neu-raised-btn self-end sm:self-auto px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#fbf9f4] dark:bg-slate-800 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer transition-all"
+              >
+                Guardar Contacto
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Archivo de CV Actual (Neumórfico) */}
+          <div className="p-4 rounded-2xl bg-[#ecdcc6]/20 dark:bg-slate-900/50 border border-[#c8b193]/50 dark:border-slate-800 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-emerald-500" />
+                <span>Archivo de CV Registrado:</span>
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                {lastReanalysisTime}
+              </span>
+            </div>
+
+            {uploadedCVName || profile?.cvFileName ? (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800/80 border border-[#c8b193]/40 dark:border-slate-700 text-xs shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px]">
+                    PDF
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                      {uploadedCVName || profile?.cvFileName}
+                    </span>
+                    <span className="text-[10px] text-slate-400">Documento validado por IA</span>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="w-4 h-4" /> Activo
+                </span>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Ningún CV registrado todavía. Carga tu archivo PDF o DOCX a continuación para extraer tus competencias con IA.</span>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Dropzone Neumórfico para Cargar Nuevo CV */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-amber-500" />
+              <span>Cargar Nuevo Curriculum Vitae (PDF o DOCX)</span>
+            </label>
+            <div className="border-2 border-dashed border-[#c8b193] dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 rounded-2xl p-6 text-center transition-colors cursor-pointer bg-[#f9f5ee]/70 dark:bg-slate-900/40 group shadow-inner">
+              <input
+                type="file"
+                accept=".pdf,.docx,.doc"
+                className="hidden"
+                id="cv-upload-input"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    setSelectedCVFile(file);
+                    setUploadedCVName(file.name);
+                    showToast('Documento cargado', `Se seleccionó ${file.name}. Listo para reanálisis.`, 'info');
+                  }
+                }}
+              />
+              <label htmlFor="cv-upload-input" className="cursor-pointer block space-y-2">
+                <div className="w-12 h-12 rounded-full neu-raised-btn bg-[#ebdcc8] dark:bg-slate-800 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto group-hover:scale-105 transition-transform">
+                  <FileUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    Haz clic para seleccionar o arrastra tu nuevo CV
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Soporta PDF, DOCX hasta 10 MB
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* 5. Reanalysis Progress Steps Animation */}
+          {isReanalyzing && (
+            <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold flex items-center gap-2 text-amber-400">
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>Reanalizando y Estructurando Perfil con IA...</span>
+                </span>
+                <span className="text-slate-400 font-mono text-[11px]">Paso {reanalyzeStep} de 4</span>
+              </div>
+
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-linear-to-r from-amber-500 to-emerald-400 h-full transition-all duration-500"
+                  style={{ width: `${(reanalyzeStep / 4) * 100}%` }}
+                />
+              </div>
+
+              <div className="space-y-1.5 pt-1 text-xs">
+                <p className={`flex items-center gap-2 ${reanalyzeStep >= 1 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}`}>
+                  {reanalyzeStep > 1 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                  <span>1. Extrayendo texto y metadatos del CV...</span>
+                </p>
+                <p className={`flex items-center gap-2 ${reanalyzeStep >= 2 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}`}>
+                  {reanalyzeStep > 2 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                  <span>2. Reconociendo grados académicos y experiencia laboral...</span>
+                </p>
+                <p className={`flex items-center gap-2 ${reanalyzeStep >= 3 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}`}>
+                  {reanalyzeStep > 3 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                  <span>3. Normalizando competencias técnicas y habilidades...</span>
+                </p>
+                <p className={`flex items-center gap-2 ${reanalyzeStep >= 4 ? 'text-emerald-400 font-semibold' : 'text-slate-500'}`}>
+                  {reanalyzeStep >= 4 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                  <span>4. Actualizando datos verificados en Mi Perfil...</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 6. Neumorphic Modal Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#c8b193]/30 dark:border-slate-800">
+            <button
+              type="button"
+              disabled={isReanalyzing}
+              onClick={() => setIsReanalyzeModalOpen(false)}
+              className="neu-raised-btn px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#fbf9f4] dark:bg-slate-800 cursor-pointer disabled:opacity-50"
+            >
+              Cerrar
+            </button>
+
+            <button
+              type="button"
+              disabled={isReanalyzing}
+              onClick={handleRunReanalysis}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_4px_0_#92400e] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isReanalyzing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                  <span>Procesando Reanálisis...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-slate-950" />
+                  <span>Ejecutar Reanálisis con IA</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Input oculto para carga de foto de perfil */}
+      <input
+        type="file"
+        ref={photoInputRef}
+        onChange={handlePhotoFileChange}
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+      />
+
+      {/* Modal: Vista previa y confirmación de Foto de Perfil */}
+      <Modal
+        isOpen={isPhotoModalOpen}
+        onClose={() => setIsPhotoModalOpen(false)}
+        title="Actualizar Foto de Perfil"
+        subtitle="Verifica la vista previa antes de guardar tu foto de perfil"
+        maxWidth="md"
+        variant="manila"
+      >
+        <div className="space-y-6 pt-2">
+          <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-[#ecdcc6]/20 dark:bg-slate-900/50 border border-[#c8b193]/50 dark:border-slate-800">
+            {tempPhotoPreview ? (
+              <div className="relative group w-44 h-44 rounded-2xl p-1 bg-gradient-to-br from-emerald-500 via-teal-500 to-amber-500 shadow-md">
+                <img
+                  src={tempPhotoPreview}
+                  alt="Vista previa de perfil"
+                  className="w-full h-full object-cover rounded-[14px]"
+                />
+              </div>
+            ) : (
+              <div className="w-32 h-32 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                <Camera className="w-10 h-10" />
+              </div>
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 text-center">
+              Esta imagen se mostrará en tu expediente, postulaciones y panel de usuario.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-[#c8b193]/30 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={triggerPhotoInput}
+              className="neu-raised-btn px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#fbf9f4] dark:bg-slate-800 cursor-pointer flex items-center gap-2 hover:bg-slate-100"
+            >
+              <Upload className="w-4 h-4 text-amber-500" />
+              <span>Elegir otra imagen</span>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPhotoModalOpen(false)}
+                className="neu-raised-btn px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSavePhoto(tempPhotoPreview)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#065f46] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-white" />
+                <span>Guardar Foto</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

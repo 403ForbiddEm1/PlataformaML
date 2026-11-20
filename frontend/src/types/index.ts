@@ -1,12 +1,36 @@
-export type UserRole = 'candidato' | 'rrhh' | 'administrador';
+export type UserRole = 'superadmin' | 'admin' | 'rrhh' | 'candidato' | 'administrador';
+
+export interface Empresa {
+  id: string;
+  nombre: string;
+  dominio?: string;
+  rif?: string;
+  activa: boolean;
+  estado?: string;
+  adminsCount?: number;
+  rrhhCount?: number;
+  logo?: string;
+  descripcion?: string;
+  telefono?: string;
+  direccion?: string;
+  creadoEn: string;
+  actualizadoEn?: string;
+}
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
+  age?: number;
+  empresaId?: string;
+  empresaNombre?: string;
+  companyId?: string | null;
+  companyName?: string | null;
   avatar?: string;
+  photoUrl?: string;
   phone?: string;
+  pendiente?: boolean;
   createdAt: string;
 }
 
@@ -45,8 +69,11 @@ export interface Application {
   vacancyId: string;
   vacancyTitle: string;
   vacancyDepartment: string;
+  empresaId?: string;
+  empresaNombre?: string;
   candidateId: string;
   candidateName: string;
+  candidateAge?: number;
   candidateEmail: string;
   candidatePhone: string;
   idCardFileName?: string;
@@ -63,6 +90,10 @@ export interface Application {
 
 export interface Vacancy {
   id: string;
+  empresaId?: string;
+  empresaNombre?: string;
+  companyId?: string;
+  companyName?: string;
   title: string;
   department: string;
   location: string;
@@ -83,6 +114,8 @@ export interface CandidateProfile {
   userId: string;
   firstName: string;
   lastName: string;
+  photoUrl?: string;
+  age?: number;
   email: string;
   phone: string;
   title: string;
@@ -141,4 +174,36 @@ export interface ComparisonMetrics {
   totalApplicationsProcessed: number;
   averageSatisfactionScore: number;
   timeReductionPercentage: number;
+}
+
+export interface TerminationDetails {
+  terminationDate: string;
+  reason: string;
+  noticePeriodDays: number;
+  noticeAmount: number;         // Preaviso
+  severanceAmount: number;      // Auxilio de cesantía
+  vacationAmount: number;       // Vacaciones proporcionales
+  christmasSalaryAmount: number;// Salario de Navidad / Regalía pascual
+  totalSettlement: number;      // Monto total del cuadre de liquidación
+  processedBy: string;          // Nombre del encargado de RRHH
+  notifiedViaEmail: boolean;
+  announcementNote?: string;    // Nota y comunicación formal
+}
+
+export interface Employee {
+  id: string;
+  candidateId?: string;
+  empresaId: string;
+  empresaNombre: string;
+  name: string;
+  age?: number;
+  email: string;
+  phone: string;
+  avatar?: string;
+  role: string;                 // Cargo o puesto en la empresa
+  department: string;
+  hiredDate: string;
+  salary: number;               // Sueldo mensual base en DOP / USD
+  status: 'Activo' | 'Despedido';
+  terminationDetails?: TerminationDetails;
 }

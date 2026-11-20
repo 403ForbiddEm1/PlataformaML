@@ -1,18 +1,16 @@
 /**
  * Base HTTP & API Client configuration.
- * Conectado directamente al backend Express/Node.js (http://localhost:4000/api)
- * y al servicio de Machine Learning FastAPI a través del backend (/api/ml/*).
+ * Configured according to the project architecture.
+ * Integrates seamlessly with the Express/Node.js backend and FastAPI ML service.
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-export const ML_API_BASE_URL = import.meta.env.VITE_ML_API_URL || 'http://localhost:8000';
-export const USE_MOCK = false;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+export const USE_MOCK = false; // Mockups desactivados: conectado directamente a API Backend real
 
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
   message?: string;
-  error?: string;
 }
 
 class ApiClient {
@@ -25,20 +23,16 @@ class ApiClient {
     };
   }
 
-  private async handleResponse<T>(response: Response, method: string, endpoint: string): Promise<ApiResponse<T>> {
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
-    const payload = isJson ? await response.json().catch(() => null) : null;
-
+  private async handleResponse<T>(response: Response, endpoint: string): Promise<ApiResponse<T>> {
     if (!response.ok) {
-      const errorMessage =
-        payload?.error ||
-        payload?.message ||
-        `API Error [${method} ${endpoint}]: ${response.status} ${response.statusText}`;
-      throw new Error(errorMessage);
+      let errorMsg = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.error || errorData.message || response.statusText;
+      } catch {}
+      throw new Error(errorMsg);
     }
-
-    return payload as ApiResponse<T>;
+    return response.json();
   }
 
   async get<T>(endpoint: string): Promise<ApiResponse<T>> {
@@ -46,34 +40,34 @@ class ApiClient {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return this.handleResponse<T>(response, 'GET', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 
-  async post<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
-    return this.handleResponse<T>(response, 'POST', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 
-  async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  async put<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'PUT',
       headers: this.getHeaders(),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
-    return this.handleResponse<T>(response, 'PUT', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 
-  async patch<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  async patch<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'PATCH',
       headers: this.getHeaders(),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
-    return this.handleResponse<T>(response, 'PATCH', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
@@ -81,7 +75,7 @@ class ApiClient {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    return this.handleResponse<T>(response, 'DELETE', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 
   async upload<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
@@ -94,7 +88,7 @@ class ApiClient {
       headers,
       body: formData,
     });
-    return this.handleResponse<T>(response, 'UPLOAD', endpoint);
+    return this.handleResponse<T>(response, endpoint);
   }
 }
 

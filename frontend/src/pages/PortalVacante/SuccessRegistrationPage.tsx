@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
-import { Check, Briefcase, Shield, ArrowRight } from 'lucide-react';
+import { Check, Briefcase, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 
@@ -20,7 +20,7 @@ export const SuccessRegistrationPage: React.FC<SuccessRegistrationPageProps> = (
   vacancyTitle,
   onNavigate,
 }) => {
-  const { register } = useAuth();
+  const { register, isAuthenticated, user } = useAuth();
   const { showToast } = useToast();
 
   const [password, setPassword] = useState('');
@@ -44,7 +44,6 @@ export const SuccessRegistrationPage: React.FC<SuccessRegistrationPageProps> = (
         name: candidateName || 'Candidato',
         email: email || 'candidato@correo.com',
         password,
-        role: 'candidato',
       });
       showToast('¡Cuenta creada con éxito!', 'Ahora puedes dar seguimiento a tu postulación.', 'success');
       onNavigate('candidate-dashboard');
@@ -56,94 +55,119 @@ export const SuccessRegistrationPage: React.FC<SuccessRegistrationPageProps> = (
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-dvh bg-transparent flex flex-col font-sans transition-colors">
       <Navbar onNavigate={onNavigate} currentView="apply-success" />
 
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-        <div className="w-full max-w-xl text-center space-y-6">
-          {/* Green Checkmark Circle (Screenshot 5) */}
-          <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-white mx-auto shadow-lg shadow-emerald-500/30 animate-in zoom-in-50 duration-300">
-            <Check className="w-9 h-9 stroke-[3]" />
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-xl text-center space-y-4">
+          {/* Official Stamp Checkmark */}
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#C8FF45] rounded-2xl flex items-center justify-center text-[#090A0C] mx-auto border border-[#C8FF45]/60 shadow-[0_10px_28px_-6px_rgba(200,255,69,0.45)]">
+            <Check className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.8]" />
           </div>
 
-          {/* Titles & Badge (Screenshot 5) */}
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              ¡Postulación enviada con éxito!
+          {/* Titles & Badge */}
+          <div className="space-y-1.5">
+            <h1 className="text-xl sm:text-3xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight font-['Instrument_Sans',sans-serif]">
+              ¡Expediente de postulación registrado!
             </h1>
-            <p className="text-sm text-slate-500">
-              Revisa tu correo o WhatsApp para novedades
+            <p className="text-xs sm:text-sm text-[#777873]">
+              Tu solicitud ha ingresado al sistema y cuenta con trazabilidad activa.
             </p>
-            <div className="pt-2">
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
-                <Briefcase className="w-3.5 h-3.5 text-slate-500" />
-                {vacancyTitle || 'Analista de Datos'} · Nexo Tecnología
+            <div className="pt-0.5">
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-xl glass-panel text-xs font-semibold text-[#090A0C] dark:text-[#F1F2EC]">
+                <Briefcase className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45]" />
+                {vacancyTitle || 'Convocatoria Abierta'} · PlataformaML
               </span>
             </div>
           </div>
 
-          {/* Quick Account Creation Card (Screenshot 5) */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs text-left space-y-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Tu próxima oportunidad, en un solo lugar
-              </h2>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Crea una contraseña para consultar el estado de tu solicitud y aplicar a otras
-                vacantes de la empresa
-              </p>
-            </div>
+          {isAuthenticated ? (
+            <div className="glass-panel rounded-2xl p-5 sm:p-6 text-left space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-[#090A0C] dark:text-[#F1F2EC] font-['Instrument_Sans',sans-serif]">
+                  Postulación vinculada a tu expediente oficial
+                </h2>
+                <p className="text-xs text-[#777873] mt-1 leading-relaxed">
+                  Tu postulación ha quedado asociada al expediente de{' '}
+                  <span className="font-semibold text-[#090A0C] dark:text-[#F1F2EC]">
+                    {user?.name || candidateName}
+                  </span>{' '}
+                  ({user?.email || email}). Puedes consultar tu estado en tiempo real desde tu archivero de postulaciones.
+                </p>
+              </div>
 
-            <form onSubmit={handleCompleteRegistration} className="space-y-4">
-              <Input
-                label="Contraseña"
-                type="password"
-                isPassword
-                placeholder="Crea tu contraseña"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                helperText="Usa al menos 8 caracteres, una letra y un número."
-                required
-              />
-
-              <Input
-                label="Confirmar Contraseña"
-                type="password"
-                isPassword
-                placeholder="Repite tu contraseña"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-
-              <div className="pt-2">
+              <div className="space-y-2.5 pt-2">
                 <Button
-                  type="submit"
+                  type="button"
                   size="lg"
                   fullWidth
-                  isLoading={isLoading}
-                  className="bg-emerald-500 hover:bg-emerald-600 font-bold"
+                  onClick={() => onNavigate('candidate-dashboard')}
+                  leftIcon={<Briefcase className="w-4 h-4" />}
                 >
-                  Completar Registro
+                  Ir a Mis Postulaciones
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="md"
+                  fullWidth
+                  onClick={() => onNavigate('vacancies')}
+                >
+                  Explorar más convocatorias
                 </Button>
               </div>
-            </form>
-
-            <div className="text-center pt-1">
-              <button
-                type="button"
-                onClick={() => onNavigate('home')}
-                className="text-xs font-semibold text-slate-500 hover:text-emerald-600 transition-colors"
-              >
-                Ir al Inicio
-              </button>
             </div>
-          </div>
+          ) : (
+            <div className="neu-paper-surface rounded-2xl p-6 sm:p-8 text-left space-y-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Activa tu acceso de seguimiento
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                  Define una contraseña para consultar el estado de tu solicitud y postularte a futuras vacantes en PlataformaML.
+                </p>
+              </div>
 
-          {/* Subtext reassurance */}
-          <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
-            <Shield className="w-3.5 h-3.5" />
-            <span>Tu postulación ya fue recibida, aunque decidas registrarte después.</span>
+              <form onSubmit={handleCompleteRegistration} className="space-y-4">
+                <Input
+                  label="Contraseña"
+                  type="password"
+                  isPassword
+                  placeholder="Crea tu contraseña"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  helperText="Usa al menos 8 caracteres, una letra y un número."
+                  required
+                />
+
+                <Input
+                  label="Confirmar Contraseña"
+                  type="password"
+                  isPassword
+                  placeholder="Repite tu contraseña"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    fullWidth
+                    isLoading={isLoading}
+                  >
+                    Completar Registro
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5">
+            <Shield className="w-3.5 h-3.5 text-[#0B5D46] dark:text-emerald-400" />
+            <span>Postulación recibida y auditada bajo estándares de equidad algorítmica.</span>
           </p>
         </div>
       </main>

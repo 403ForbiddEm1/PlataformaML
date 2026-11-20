@@ -6,20 +6,16 @@ import { MLScoreBadge } from '@/components/ml/MLScoreBadge';
 import { Button } from '@/components/ui/Button';
 import {
   FileText,
-  Calendar,
   Phone,
   Mail,
   UserCheck,
-  UserX,
   Clock,
-  Send,
-  MessageSquare,
-  Shield,
   FileCheck,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { applicationsService } from '@/services/applications.service';
+import { HireCandidateModal, canHireApplication } from './HireCandidateModal';
 
 interface ApplicationDetailModalProps {
   isOpen: boolean;
@@ -40,10 +36,13 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
   const { showToast } = useToast();
   const [noteText, setNoteText] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isHireModalOpen, setIsHireModalOpen] = useState(false);
 
   if (!application) return null;
 
-  const isRecruiterOrAdmin = user?.role === 'rrhh' || user?.role === 'administrador';
+  const isRecruiterOrAdmin =
+    user?.role === 'rrhh' || user?.role === 'admin' || user?.role === 'superadmin';
+  const hireEnabled = canHireApplication(application);
 
   const handleStatusChange = async (newStatus: ApplicationStatus) => {
     setIsUpdating(true);
@@ -73,83 +72,104 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Detalle de Postulación"
+      title="Expediente de Postulación"
       subtitle={`Referencia #${application.id.toUpperCase()} · ${application.vacancyTitle}`}
       maxWidth="2xl"
+      variant="manila"
     >
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Top Header Card */}
-        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-4 rounded-xl bg-[#F4EFE4] dark:bg-slate-800/80 border border-[#C8B496] dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h4 className="text-base font-bold text-slate-900">{application.candidateName}</h4>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                {application.candidateName} · <span className="font-mono-tabular">{application.candidateAge || 26} años</span>
+              </h4>
               <Badge status={application.status} />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">{application.vacancyDepartment}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+              {application.vacancyDepartment}
+            </p>
           </div>
 
-          {application.mlScore && (
-            <div className="flex items-center gap-2">
-              <MLScoreBadge
-                score={application.mlScore}
-                onClick={onOpenExplainability}
-              />
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <MLScoreBadge
+              score={application.mlScore}
+              onClick={onOpenExplainability}
+            />
+          </div>
         </div>
 
         {/* Contact & Submitted Documents Info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="p-3 rounded-xl border border-slate-200 space-y-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase">Datos de Contacto</span>
-            <div className="flex items-center gap-2 text-slate-700">
-              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DED7C8] dark:border-slate-800 space-y-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              Datos de Contacto Verificados
+            </span>
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span className="truncate">{application.candidateEmail}</span>
             </div>
-            <div className="flex items-center gap-2 text-slate-700">
-              <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-mono-tabular">
+              <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span>{application.candidatePhone}</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 pt-0.5">
+              <span className="font-semibold text-slate-500 text-[11px]">Edad declarada:</span>
+              <span className="font-mono-tabular font-semibold text-slate-800 dark:text-slate-200">
+                {application.candidateAge || 26} años
+              </span>
             </div>
           </div>
 
-          <div className="p-3 rounded-xl border border-slate-200 space-y-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase">Documentos Adjuntos</span>
-            <div className="flex items-center justify-between text-slate-700 bg-white p-1.5 rounded-lg border border-slate-100">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DED7C8] dark:border-slate-800 space-y-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              Respaldo Documental
+            </span>
+            <div className="flex items-center justify-between text-slate-700 dark:text-slate-300 bg-[#F8F6F1] dark:bg-slate-800/80 p-2 rounded-lg border border-[#E5DEC9] dark:border-slate-700">
               <div className="flex items-center gap-2 truncate">
-                <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate">{application.cvFileName || 'Curriculum_Vitae.pdf'}</span>
+                <FileText className="w-3.5 h-3.5 text-[#0B5D46] dark:text-emerald-400 shrink-0" />
+                <span className="truncate font-medium">
+                  {application.cvFileName || 'Sin CV adjunto'}
+                </span>
               </div>
-              <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 shrink-0">CV</span>
+              <span className="text-[10px] font-mono-tabular bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500 shrink-0">
+                CV
+              </span>
             </div>
 
-            <div className="flex items-center justify-between text-slate-700 bg-white p-1.5 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-between text-slate-700 dark:text-slate-300 bg-[#F8F6F1] dark:bg-slate-800/80 p-2 rounded-lg border border-[#E5DEC9] dark:border-slate-700">
               <div className="flex items-center gap-2 truncate">
-                <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate">{application.idCardFileName || 'Cedula_Identidad.pdf'}</span>
+                <FileCheck className="w-3.5 h-3.5 text-[#0B5D46] dark:text-emerald-400 shrink-0" />
+                <span className="truncate font-medium">
+                  {application.idCardFileName || 'Documento_Identidad.pdf'}
+                </span>
               </div>
-              <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 shrink-0">ID</span>
+              <span className="text-[10px] font-mono-tabular bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500 shrink-0">
+                ID
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Recruiter Decision Panel (RF08) */}
+        {/* RF08: Recruiter Decision Panel */}
         {isRecruiterOrAdmin && (
-          <div className="p-4 rounded-xl border-2 border-emerald-100 bg-emerald-50/20 space-y-3">
-            <h5 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-emerald-600" />
-              Decisión Humana & Cambio de Estado (RF08)
+          <div className="p-4 rounded-xl border border-[#C8B496] dark:border-slate-700 bg-[#F4EFE4]/60 dark:bg-slate-800/50 space-y-3">
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-[#0B5D46] dark:text-emerald-400" />
+              Sello de Decisión Humana & Cambio de Estado
             </h5>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-slate-600 font-medium">
-                Nota u observación de talento humano (opcional):
+              <label className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                Observación oficial de talento humano (opcional):
               </label>
               <textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Ej. Cumple con los requisitos técnicos. Se procede a coordinar entrevista preliminar..."
+                placeholder="Ej. Cumple con los requisitos técnicos. Se procede a coordinar entrevista técnica..."
                 rows={2}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="w-full text-xs p-2.5 rounded-lg border border-[#CFC8B8] dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:border-[#0B5D46]"
               />
             </div>
 
@@ -174,6 +194,22 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
 
               <Button
                 size="sm"
+                variant="success"
+                disabled={!hireEnabled || isUpdating}
+                title={
+                  application.status === 'Contratado'
+                    ? 'El candidato ya fue contratado'
+                    : !hireEnabled
+                    ? 'Requiere Preselección o Entrevista previa para habilitar Contratar'
+                    : 'Formalizar contratación oficial y asignar sueldo'
+                }
+                onClick={() => setIsHireModalOpen(true)}
+              >
+                {application.status === 'Contratado' ? 'Contratado ✓' : 'Contratar'}
+              </Button>
+
+              <Button
+                size="sm"
                 variant="danger"
                 isLoading={isUpdating}
                 onClick={() => handleStatusChange('Descartado')}
@@ -181,28 +217,34 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
                 Descartar
               </Button>
             </div>
+            {!hireEnabled && application.status !== 'Contratado' && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                El botón <strong>Contratar</strong> se habilitará después de registrar al menos una{' '}
+                <strong>Preselección</strong> o <strong>Entrevista</strong>.
+              </p>
+            )}
           </div>
         )}
 
-        {/* Audit Trail & Timeline (RF10) */}
+        {/* RF10: Audit Trail & Timeline */}
         <div className="space-y-3">
-          <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-            <Clock className="w-4 h-4" /> Historial y Trazabilidad del Proceso (RF10)
+          <h5 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" /> Historial y Trazabilidad del Expediente
           </h5>
 
-          <div className="relative border-l-2 border-slate-200 ml-3 space-y-4 pl-4 py-1">
+          <div className="relative border-l border-[#C8B496] dark:border-slate-700 ml-3 space-y-4 pl-4 py-1">
             {application.timeline.map((event) => (
               <div key={event.id} className="relative group">
-                <span className="absolute -left-[23px] top-1 w-3.5 h-3.5 rounded-full border-2 border-white bg-emerald-500 shadow-xs" />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">{event.title}</span>
-                  <span className="text-[11px] text-slate-400">{event.timestamp}</span>
+                <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border border-white dark:border-slate-900 bg-[#0B5D46] dark:bg-emerald-500" />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{event.title}</span>
+                  <span className="text-[11px] font-mono-tabular text-slate-400">{event.timestamp}</span>
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5">{event.description}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{event.description}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] text-slate-400">Por: {event.actor}</span>
+                  <span className="text-[10px] text-slate-400">Responsable: {event.actor}</span>
                   {event.channel && (
-                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium">
+                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium border border-slate-200 dark:border-slate-700">
                       {event.channel}
                     </span>
                   )}
@@ -212,6 +254,17 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      <HireCandidateModal
+        isOpen={isHireModalOpen}
+        onClose={() => setIsHireModalOpen(false)}
+        application={application}
+        onHired={() => {
+          setIsHireModalOpen(false);
+          if (onStatusUpdated) onStatusUpdated();
+          onClose();
+        }}
+      />
     </Modal>
   );
 };

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { LoginPage } from '@/pages/Login/LoginPage';
@@ -6,18 +7,38 @@ import { PublicApplicationPage } from '@/pages/PortalVacante/PublicApplicationPa
 import { SuccessRegistrationPage } from '@/pages/PortalVacante/SuccessRegistrationPage';
 import { CandidateDashboardPage } from '@/pages/CandidatePortal/CandidateDashboardPage';
 import { HRDashboardPage } from '@/pages/HRDashboard/HRDashboardPage';
-import { AdminDashboardPage } from '@/pages/AdminDashboard/AdminDashboardPage';
+import { GlobalAdminDashboardPage } from '@/pages/GlobalAdminDashboard/GlobalAdminDashboardPage';
+import { CompanyAdminDashboardPage } from '@/pages/CompanyAdminDashboard/CompanyAdminDashboardPage';
 import { VacanciesCatalogPage } from '@/pages/VacanciesCatalog/VacanciesCatalogPage';
-import { INITIAL_VACANCIES, mockStore } from '@/services/mockData';
+import { AmbientBackground } from '@/components/layout/AmbientBackground';
+import { StatsLoaderOverlay } from '@/components/ui/StatsLoaderOverlay';
 import { Vacancy, UserRole } from '@/types';
-import { RefreshCcw, LayoutDashboard, UserCheck, Shield, Sparkles } from 'lucide-react';
+
+interface LoaderOverlayState {
+  mounted: boolean;
+  exiting: boolean;
+  mode: 'login-enter' | 'logout-exit';
+}
 
 const MainApp: React.FC = () => {
-  const { user, isAuthenticated, switchRoleDemo } = useAuth();
+  const { user, logout } = useAuth();
 
-  // Navigation state
-  const [currentView, setCurrentView] = useState<string>('apply'); // Starts at Vacancy Form (Screenshot 3) or 'login'
-  const [selectedVacancy, setSelectedVacancy] = useState<Vacancy>(INITIAL_VACANCIES[0]); // Analista de Datos
+  // Navigation state (Starts at Vacancies Catalog or Login)
+  const [currentView, setCurrentView] = useState<string>('vacancies');
+  const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
+  const [loaderState, setLoaderState] = useState<LoaderOverlayState>({
+    mounted: false,
+    exiting: false,
+    mode: 'login-enter',
+  });
+
+  // Track latest auth state synchronously so logout clicks in the same tick trigger the transition loader
+  const wasAuthenticatedRef = useRef<boolean>(Boolean(user));
+  const transitionRunIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    wasAuthenticatedRef.current = Boolean(user);
+  }, [user]);
 
   // Success view state
   const [successData, setSuccessData] = useState({
@@ -26,15 +47,74 @@ const MainApp: React.FC = () => {
     vacancyTitle: '',
   });
 
+  const runAuthTransition = useCallback(
+    (targetView: string, mode: 'login-enter' | 'logout-exit', minDurationMs = 700) => {
+      const runId = ++transitionRunIdRef.current;
+
+      setLoaderState({
+        mounted: true,
+        exiting: false,
+        mode,
+      });
+
+      const minTimer = new Promise<void>((resolve) => {
+        window.setTimeout(resolve, minDurationMs);
+      });
+
+      // Wait one frame so the fullscreen overlay covers before swapping the underlying view
+      window.requestAnimationFrame(() => {
+        if (transitionRunIdRef.current !== runId) return;
+        setCurrentView(targetView);
+
+        minTimer.then(() => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              if (transitionRunIdRef.current !== runId) return;
+              setLoaderState((prev) => ({ ...prev, exiting: true }));
+
+              window.setTimeout(() => {
+                if (transitionRunIdRef.current !== runId) return;
+                setLoaderState((prev) => ({ ...prev, mounted: false, exiting: false }));
+              }, 420);
+            });
+          });
+        });
+      });
+    },
+    []
+  );
+
+  const handleNavigate = useCallback(
+    (nextView: string) => {
+      // Logout transition: user was authenticated and navigates back to login
+      if (nextView === 'login' && (wasAuthenticatedRef.current || Boolean(user))) {
+        wasAuthenticatedRef.current = false;
+        if (user) logout();
+        runAuthTransition('login', 'logout-exit', 680);
+        return;
+      }
+      setCurrentView(nextView);
+    },
+    [logout, runAuthTransition, user]
+  );
+
   const handlePostulationSuccess = (email: string, candidateName: string, vacancyTitle: string) => {
     setSuccessData({ email, name: candidateName, vacancyTitle });
     setCurrentView('apply-success');
   };
 
   const handleLoginSuccess = (role: UserRole) => {
-    if (role === 'candidato') setCurrentView('candidate-dashboard');
-    else if (role === 'rrhh') setCurrentView('hr-dashboard');
-    else setCurrentView('admin-dashboard');
+    wasAuthenticatedRef.current = true;
+    const targetView =
+      role === 'candidato'
+        ? 'candidate-dashboard'
+        : role === 'rrhh'
+        ? 'hr-dashboard'
+        : role === 'admin' || role === 'administrador'
+        ? 'company-admin-dashboard'
+        : 'global-admin-dashboard';
+
+    runAuthTransition(targetView, 'login-enter', 760);
   };
 
   const handleApplyToVacancy = (vac: Vacancy) => {
@@ -42,125 +122,36 @@ const MainApp: React.FC = () => {
     setCurrentView('apply');
   };
 
+  const isPreparingView = loaderState.mounted && !loaderState.exiting;
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
-      {/* Quick Navigation Floating Bar for easy reviewer evaluation */}
-      <div className="bg-slate-900 text-white text-xs px-4 py-2 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="font-bold text-slate-200">Nexo Plataforma ML</span>
-          <span className="text-slate-400 hidden sm:inline">| Navegación Rápida de Pantallas:</span>
-        </div>
+    <div className="min-h-screen relative flex flex-col bg-[#F1F2EC] dark:bg-[#090A0C] text-[#090A0C] dark:text-[#F1F2EC] transition-colors overflow-x-clip">
+      {/* Global Ambient Vector & Particle Stage (Disabled on Login, which manages its own half-panel particles) */}
+      {currentView !== 'login' && <AmbientBackground />}
 
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <button
-            onClick={() => setCurrentView('login')}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'login'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            1. Login / Roles
-          </button>
+      {/* Fullscreen Statistics + Bouncing Ball Transition Loader (Post-Login & Logout only) */}
+      <StatsLoaderOverlay
+        isMounted={loaderState.mounted}
+        isExiting={loaderState.exiting}
+        mode={loaderState.mode}
+      />
 
-          <button
-            onClick={() => setCurrentView('apply')}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'apply'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            2. Formulario Postulación
-          </button>
-
-          <button
-            onClick={() => {
-              setSuccessData({
-                email: 'valeria.mendoza@correo.com',
-                name: 'Valeria Mendoza',
-                vacancyTitle: 'Analista de Datos',
-              });
-              setCurrentView('apply-success');
-            }}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'apply-success'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            3. Éxito / Registro
-          </button>
-
-          <button
-            onClick={() => {
-              switchRoleDemo('candidato');
-              setCurrentView('candidate-dashboard');
-            }}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'candidate-dashboard'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            4. Portal Candidato
-          </button>
-
-          <button
-            onClick={() => {
-              switchRoleDemo('rrhh');
-              setCurrentView('hr-dashboard');
-            }}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'hr-dashboard'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            5. Talento Humano (IA)
-          </button>
-
-          <button
-            onClick={() => {
-              switchRoleDemo('administrador');
-              setCurrentView('admin-dashboard');
-            }}
-            className={`px-2.5 py-1 rounded-md transition-colors ${
-              currentView === 'admin-dashboard'
-                ? 'bg-emerald-500 text-white font-bold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            6. Administración (ML)
-          </button>
-
-          <button
-            onClick={() => {
-              mockStore.resetToDefaults();
-              window.location.reload();
-            }}
-            className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
-            title="Reiniciar datos de demostración"
-          >
-            <RefreshCcw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Screen Renderer */}
-      <div className="flex-1 flex flex-col">
+      {/* Screen Renderer (Pauses entrance animations until loader begins fading out) */}
+      <div
+        key={currentView}
+        className={`relative z-[2] flex-1 flex flex-col ${isPreparingView ? 'entrance-paused' : ''}`}
+      >
         {currentView === 'login' && (
           <LoginPage
             onLoginSuccess={handleLoginSuccess}
-            onGoToVacancies={() => setCurrentView('vacancies')}
+            onGoToVacancies={() => handleNavigate('vacancies')}
           />
         )}
 
-        {currentView === 'apply' && (
+        {currentView === 'apply' && selectedVacancy && (
           <PublicApplicationPage
             vacancy={selectedVacancy}
-            onNavigate={setCurrentView}
+            onNavigate={handleNavigate}
             onPostulationSuccess={handlePostulationSuccess}
           />
         )}
@@ -170,28 +161,36 @@ const MainApp: React.FC = () => {
             email={successData.email}
             candidateName={successData.name}
             vacancyTitle={successData.vacancyTitle}
-            onNavigate={setCurrentView}
+            onNavigate={handleNavigate}
           />
         )}
 
         {currentView === 'candidate-dashboard' && (
           <CandidateDashboardPage
-            onNavigate={setCurrentView}
+            onNavigate={handleNavigate}
             onApplyVacancy={handleApplyToVacancy}
           />
         )}
 
         {currentView === 'hr-dashboard' && (
-          <HRDashboardPage onNavigate={setCurrentView} />
+          <HRDashboardPage onNavigate={handleNavigate} />
         )}
 
-        {currentView === 'admin-dashboard' && (
-          <AdminDashboardPage onNavigate={setCurrentView} />
+        {(currentView === 'global-admin-dashboard' || currentView === 'admin-dashboard') && (
+          user?.role === 'superadmin' ? (
+            <GlobalAdminDashboardPage onNavigate={handleNavigate} />
+          ) : (
+            <CompanyAdminDashboardPage onNavigate={handleNavigate} />
+          )
+        )}
+
+        {currentView === 'company-admin-dashboard' && (
+          <CompanyAdminDashboardPage onNavigate={handleNavigate} />
         )}
 
         {currentView === 'vacancies' && (
           <VacanciesCatalogPage
-            onNavigate={setCurrentView}
+            onNavigate={handleNavigate}
             onSelectVacancy={handleApplyToVacancy}
           />
         )}
@@ -202,10 +201,12 @@ const MainApp: React.FC = () => {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <MainApp />
-      </AuthProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <MainApp />
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

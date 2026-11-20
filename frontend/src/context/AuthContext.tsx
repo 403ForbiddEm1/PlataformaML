@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, UserRole } from '@/types';
-import { authService, LoginCredentials, RegisterData } from '@/services/auth.service';
+import { authService, LoginCredentials, RegisterCandidateData } from '@/services/auth.service';
 
 interface AuthContextType {
   user: User | null;
   role: UserRole;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User>;
+  register: (data: RegisterCandidateData) => Promise<void>;
   logout: () => void;
   switchRoleDemo: (role: UserRole) => void;
+  updateUserPhoto: (photoUrl: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,21 +28,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
-  const login = async (credentials: LoginCredentials) => {
+  const login = async (credentials: LoginCredentials): Promise<User> => {
     setIsLoading(true);
     try {
-      const { user } = await authService.login(credentials);
-      setUser(user);
+      const { user: loggedInUser } = await authService.login(credentials);
+      setUser(loggedInUser);
+      return loggedInUser;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (data: RegisterData) => {
+  const register = async (data: RegisterCandidateData) => {
     setIsLoading(true);
     try {
-      const { user } = await authService.register(data);
-      setUser(user);
+      const { user: registeredUser } = await authService.register(data);
+      setUser(registeredUser);
     } finally {
       setIsLoading(false);
     }
@@ -71,24 +73,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'carlos.rrhh@nexo.com',
         name: 'Lic. Carlos Arismendi',
         role: 'rrhh',
+        empresaId: 'emp-01',
+        empresaNombre: 'Nexo Tecnología S.A.',
         phone: '+1 (809) 555-0244',
         avatar: 'CA',
         createdAt: '2026-09-15T08:30:00Z',
       };
       localStorage.setItem('nexo_current_user', JSON.stringify(demoUser));
       setUser(demoUser);
-    } else {
+    } else if (targetRole === 'admin') {
       const demoUser: User = {
         id: 'usr-adm-01',
         email: 'sofia.admin@nexo.com',
         name: 'Ing. Sofía Velásquez',
-        role: 'administrador',
+        role: 'admin',
+        empresaId: 'emp-01',
+        empresaNombre: 'Nexo Tecnología S.A.',
         phone: '+1 (809) 555-0371',
         avatar: 'SV',
         createdAt: '2026-08-10T09:00:00Z',
       };
       localStorage.setItem('nexo_current_user', JSON.stringify(demoUser));
       setUser(demoUser);
+    } else {
+      const demoUser: User = {
+        id: 'usr-super-01',
+        email: 'superadmin@plataformaml.com',
+        name: 'Dr. Alejandro Morales',
+        role: 'superadmin',
+        phone: '+1 (809) 555-0999',
+        avatar: 'AM',
+        createdAt: '2026-07-01T08:00:00Z',
+      };
+      localStorage.setItem('nexo_current_user', JSON.stringify(demoUser));
+      setUser(demoUser);
+    }
+  };
+
+  const updateUserPhoto = (photoUrl: string | null) => {
+    if (user) {
+      const updatedUser: User = {
+        ...user,
+        photoUrl: photoUrl || undefined,
+      };
+      setUser(updatedUser);
+      localStorage.setItem('nexo_current_user', JSON.stringify(updatedUser));
+      // Guardar también con clave específica por usuario y por correo para sincronizar entre portales
+      const cleanEmail = (user.email || '').trim().toLowerCase();
+      if (photoUrl) {
+        localStorage.setItem(`nexo_user_photo_${user.id}`, photoUrl);
+        if (cleanEmail) {
+          localStorage.setItem(`nexo_photo_by_email_${cleanEmail}`, photoUrl);
+        }
+      } else {
+        localStorage.removeItem(`nexo_user_photo_${user.id}`);
+        if (cleanEmail) {
+          localStorage.removeItem(`nexo_photo_by_email_${cleanEmail}`);
+        }
+      }
     }
   };
 
@@ -103,6 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         switchRoleDemo,
+        updateUserPhoto,
       }}
     >
       {children}

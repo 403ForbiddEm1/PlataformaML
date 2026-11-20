@@ -78,36 +78,36 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`group relative border-2 border-dashed rounded-2xl p-4 transition-all duration-200 cursor-pointer flex items-center justify-between gap-4 ${
+        className={`group relative border-2 border-dashed rounded-2xl p-3 sm:p-3.5 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 ${
           selectedFile
-            ? 'border-emerald-400 bg-emerald-50/30'
+            ? 'border-[#C8FF45] bg-[#C8FF45]/10 dark:bg-[#C8FF45]/10'
             : isDragging
-            ? 'border-emerald-500 bg-emerald-50/50 scale-[1.01]'
-            : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-300'
-        } ${error ? 'border-rose-400 bg-rose-50/30' : ''}`}
+            ? 'border-[#4C6FFF] bg-[#4C6FFF]/10 scale-[1.01]'
+            : 'border-[#777873]/35 bg-[#F1F2EC]/70 dark:bg-[#090A0C]/70 hover:border-[#4C6FFF] dark:hover:border-[#C8FF45]/60'
+        } ${error ? 'border-rose-400 bg-rose-500/10' : ''}`}
       >
-        <div className="flex items-center gap-3.5 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
           {/* Leading Icon Box */}
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
               selectedFile
-                ? 'bg-emerald-100 text-emerald-600'
-                : 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100'
+                ? 'bg-[#C8FF45] text-[#090A0C]'
+                : 'bg-[#4C6FFF]/15 text-[#4C6FFF] dark:bg-[#C8FF45]/15 dark:text-[#C8FF45]'
             }`}
           >
             {type === 'idCard' ? (
-              <Contact2 className="w-5 h-5 stroke-[1.8]" />
+              <Contact2 className="w-4.5 h-4.5 stroke-[1.8]" />
             ) : (
-              <FileText className="w-5 h-5 stroke-[1.8]" />
+              <FileText className="w-4.5 h-4.5 stroke-[1.8]" />
             )}
           </div>
 
           {/* Text labels */}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-slate-800 truncate">
+            <p className="text-xs sm:text-sm font-semibold text-[#090A0C] dark:text-[#F1F2EC] truncate">
               {selectedFile ? selectedFile.name : label}
             </p>
-            <p className="text-xs text-slate-500 truncate">
+            <p className="text-[11px] text-[#777873] truncate">
               {selectedFile
                 ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · Listo para enviar`
                 : sublabel}
@@ -116,18 +116,18 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         </div>
 
         {/* Right action indicator */}
-        <div className="shrink-0 pl-2">
+        <div className="shrink-0 pl-1">
           {selectedFile ? (
             <button
               type="button"
               onClick={removeFile}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              className="p-1.5 rounded-lg text-[#777873] hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
               title="Quitar archivo"
             >
               <X className="w-4 h-4" />
             </button>
           ) : (
-            <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-emerald-600 group-hover:border-emerald-300 group-hover:bg-emerald-50 transition-colors">
+            <div className="w-7 h-7 rounded-lg bg-[#F1F2EC] dark:bg-[#090A0C] border border-[#777873]/30 flex items-center justify-center text-[#4C6FFF] dark:text-[#C8FF45] group-hover:border-[#C8FF45] transition-colors">
               <Plus className="w-4 h-4" />
             </div>
           )}
