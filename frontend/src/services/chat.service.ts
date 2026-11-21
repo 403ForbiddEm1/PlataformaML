@@ -1,53 +1,58 @@
 import { api } from './api';
 
+/** Forma real que devuelve el backend (chat.service.ts del backend) */
 export interface ChatMessageDto {
   id: string;
   conversacionId: string;
-  remitenteId: string;
-  cuerpo: string;
+  autorId: string;
+  contenido: string;
   leidoEn: string | null;
   creadoEn: string;
-  remitente?: {
+  canalEnvio?: 'WEB' | 'TELEGRAM';
+  autor?: {
     id: string;
     nombre: string;
     apellido: string;
-    rol: string;
-    urlFoto: string | null;
+    rol: 'SUPER_ADMIN' | 'ADMIN' | 'RRHH' | 'CANDIDATO';
   };
 }
 
 export interface ChatConversationDto {
   id: string;
   empresaId: string;
+  empresaNombre: string;
   candidatoId: string;
-  postulacionId: string;
-  ultimoMensajeEn: string | null;
-  creadoEn: string;
-  empresa?: { id: string; nombre: string; urlLogo: string | null };
-  candidato?: { id: string; nombre: string; apellido: string; correo: string; urlFoto: string | null };
-  postulacion?: {
+  candidatoNombre: string;
+  postulacionId: string | null;
+  vacanteTitulo: string;
+  ultimoMensaje: {
     id: string;
-    estado: string;
-    vacante: { id: string; titulo: string; departamento: string | null };
-  };
-  mensajes?: ChatMessageDto[];
-  noLeidos?: number;
+    autorId: string;
+    contenido: string;
+    leidoEn: string | null;
+    creadoEn: string;
+  } | null;
+  ultimoMensajeEn: string | null;
+  cerradaEn: string | null;
+  noLeidos: number;
+  telegramVinculado?: boolean;
 }
 
 export const chatService = {
   async getConversations(): Promise<ChatConversationDto[]> {
-    const response = await api.get<ChatConversationDto[]>('/chat/conversations');
-    return response.data;
+    const response = await api.get<ChatConversationDto[]>('/conversations');
+    return Array.isArray(response.data) ? response.data : [];
   },
 
-  async getMessages(conversationId: string): Promise<ChatMessageDto[]> {
-    const response = await api.get<ChatMessageDto[]>(`/chat/conversations/${conversationId}/messages`);
-    return response.data;
+  async getMessages(conversationId: string, after?: string): Promise<ChatMessageDto[]> {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : '';
+    const response = await api.get<ChatMessageDto[]>(`/conversations/${conversationId}/messages${qs}`);
+    return Array.isArray(response.data) ? response.data : [];
   },
 
-  async sendMessage(conversationId: string, cuerpo: string): Promise<ChatMessageDto> {
-    const response = await api.post<ChatMessageDto>(`/chat/conversations/${conversationId}/messages`, {
-      cuerpo,
+  async sendMessage(conversationId: string, contenido: string): Promise<ChatMessageDto> {
+    const response = await api.post<ChatMessageDto>(`/conversations/${conversationId}/messages`, {
+      contenido,
     });
     return response.data;
   },
@@ -56,24 +61,4 @@ export const chatService = {
     const response = await api.patch<{ marcados: number }>(`/conversations/${conversationId}/read`);
     return response.data;
   },
-
-  async getTelegramLink(): Promise<{
-    botOnline: boolean;
-    botUsername: string | null;
-    vinculado: boolean;
-    chatId: string | null;
-    deepLink: string | null;
-    comandoManual: string;
-  }> {
-    const response = await api.get<{
-      botOnline: boolean;
-      botUsername: string | null;
-      vinculado: boolean;
-      chatId: string | null;
-      deepLink: string | null;
-      comandoManual: string;
-    }>('/conversations/telegram-link');
-    return response.data;
-  },
 };
-

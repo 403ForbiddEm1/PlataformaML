@@ -147,6 +147,74 @@ export const authController = {
     }
   },
 
+  // ─── Enviar código de 6 dígitos al correo para Login / Registro con Google ─
+  async googleSendCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body || {};
+      const correo = (body.correo || body.email || '').toString().trim();
+      const nombre = (body.nombre || body.name || '').toString().trim() || undefined;
+      const telefono = (body.telefono || body.phone || '').toString().trim() || undefined;
+      const clave = (body.clave || body.password || '').toString() || undefined;
+      const modo = body.modo === 'register' ? 'register' : 'login';
+
+      const resultado = await googleService.enviarCodigoGoogle({
+        correo,
+        nombre,
+        telefono,
+        clave,
+        modo,
+      });
+      res.json({ success: true, data: resultado });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ─── Verificar código de 6 dígitos de Google y devolver sesión JWT ──────
+  async googleVerifyCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body || {};
+      const correo = (body.correo || body.email || '').toString().trim();
+      const codigo = (body.codigo || body.code || '').toString().trim();
+      const nombre = (body.nombre || body.name || '').toString().trim() || undefined;
+      const telefono = (body.telefono || body.phone || '').toString().trim() || undefined;
+      const clave = (body.clave || body.password || '').toString() || undefined;
+      const ip = req.ip as string | undefined;
+
+      const resultado = await googleService.verificarCodigoGoogle(
+        { correo, codigo, nombre, telefono, clave },
+        ip,
+      );
+      res.json({ success: true, data: resultado });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ─── Selector de cuentas de Google ("Elige una cuenta") e inicio en 1 clic ─
+  async googleListAccounts(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const cuentas = await googleService.listarCuentasGoogleDisponibles();
+      res.json({ success: true, data: cuentas });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async googleQuickLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body || {};
+      const correo = (body.correo || body.email || '').toString().trim();
+      const nombre = (body.nombre || body.name || '').toString().trim() || undefined;
+      const ip = req.ip as string | undefined;
+
+      const resultado = await googleService.loginRapidoGoogle({ correo, nombre }, ip);
+      res.json({ success: true, data: resultado });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // ─── Obtener perfil de la sesión actual ───────────────────────────────────
   async me(req: Request, res: Response, next: NextFunction) {
     try {
@@ -222,6 +290,49 @@ export const authController = {
 
       const resultado = await authService.aceptarInvitacion(validado, ip);
       res.status(201).json({ success: true, data: resultado });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ─── Código de seguridad (Correo o Telegram) para cambiar o recuperar clave ─
+  async passwordCodeSend(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body || {};
+      const canal: 'CORREO' | 'TELEGRAM' = body.canal === 'TELEGRAM' ? 'TELEGRAM' : 'CORREO';
+      const correo = body.correo || body.email || undefined;
+      const telefono = body.telefono || body.phone || undefined;
+      const usuarioId = req.user?.id || body.usuarioId || undefined;
+
+      const resultado = await googleService.enviarCodigoSeguridadClave({
+        canal,
+        correo,
+        telefono,
+        usuarioId,
+      });
+      res.json({ success: true, data: resultado });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async passwordCodeVerify(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = req.body || {};
+      const codigo = (body.codigo || body.code || '').toString().trim();
+      const nuevaClave = (body.nuevaClave || body.password || '').toString();
+      const correo = body.correo || body.email || undefined;
+      const telefono = body.telefono || body.phone || undefined;
+      const usuarioId = req.user?.id || body.usuarioId || undefined;
+
+      const resultado = await googleService.verificarCodigoYActualizarClave({
+        codigo,
+        nuevaClave,
+        correo,
+        telefono,
+        usuarioId,
+      });
+      res.json({ success: true, data: resultado });
     } catch (err) {
       next(err);
     }

@@ -1,9 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Application, ApplicationStatus, CandidateProfile, Vacancy, NotificationItem } from '@/types';
+import {
+  Application,
+  ApplicationStatus,
+  CandidateProfile,
+  CandidateVisibilitySettings,
+  Vacancy,
+  NotificationItem,
+} from '@/types';
 import { applicationsService } from '@/services/applications.service';
-import { candidatesService } from '@/services/candidates.service';
+import { candidatesService, DEFAULT_VISIBILITY } from '@/services/candidates.service';
 import { vacanciesService } from '@/services/vacancies.service';
 import { notificationsService } from '@/services/notifications.service';
+import { authService } from '@/services/auth.service';
 import { api, USE_MOCK } from '@/services/api';
 import { parseAndAnalyzeCV } from '@/services/cvParser';
 import { useAuth } from '@/context/AuthContext';
@@ -17,6 +25,9 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { AppShell } from '@/components/layout/AppShell';
+import { type SidebarSection } from '@/components/layout/Sidebar';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 import { useFolderAutoScroll } from '@/hooks/useFolderAutoScroll';
 import {
   Briefcase,
@@ -68,6 +79,10 @@ import {
   Image,
   Menu,
   X,
+  Eye,
+  EyeOff,
+  LocateFixed,
+  Loader2,
 } from 'lucide-react';
 
 interface CandidateDashboardPageProps {
@@ -96,7 +111,6 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [tempPhotoPreview, setTempPhotoPreview] = useState<string | null>(null);
   const [tempPhotoFile, setTempPhotoFile] = useState<File | null>(null);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -174,9 +188,10 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     setIsPhotoModalOpen(false);
   };
 
-  const [activeTab, setActiveTab] = useState<'applications' | 'profile' | 'vacancies' | 'notifications'>(
+  const [activeTab, setActiveTab] = useState<'applications' | 'messages' | 'profile' | 'vacancies' | 'notifications'>(
     'applications'
   );
+  const [focusChatAppId, setFocusChatAppId] = useState<string | undefined>(undefined);
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
@@ -209,10 +224,45 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   const [selectedCVFile, setSelectedCVFile] = useState<File | null>(null);
   const [uploadedCVName, setUploadedCVName] = useState('');
   const [lastReanalysisTime, setLastReanalysisTime] = useState('Sin CV registrado');
+  const [isUploadingDirectCV, setIsUploadingDirectCV] = useState(false);
+  const directCvInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Contacto editable manualmente con validación de formato
+  const isAllowedCvFormat = (fileName: string) => {
+    const lower = fileName.trim().toLowerCase();
+    return lower.endsWith('.pdf') || lower.endsWith('.doc') || lower.endsWith('.docx');
+  };
+
+  const triggerDirectCvUpload = () => {
+    directCvInputRef.current?.click();
+  };
+
+  // Contacto y Ubicación editables manualmente + Visibilidad de secciones
   const [editEmail, setEditEmail] = useState(user?.email || '');
   const [editPhone, setEditPhone] = useState(user?.phone || '');
+  const [editLocation, setEditLocation] = useState('');
+  const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [telegramLinkedPhone, setTelegramLinkedPhone] = useState<string>(() => {
+    try {
+      const cleanEm = (user?.email || '').trim().toLowerCase();
+      const unlinked = localStorage.getItem(`nexo_candidate_tlg_unlinked_${cleanEm}`) === '1';
+      if (unlinked) return '';
+      return (
+        localStorage.getItem(`nexo_candidate_tlg_${cleanEm}`) ||
+        (user?.phone ? user.phone.trim() : '')
+      );
+    } catch {
+      return user?.phone ? user.phone.trim() : '';
+    }
+  });
+  // Cambio o adición de contraseña con código de verificación (Correo o Telegram)
+  const [pwdChannel, setPwdChannel] = useState<'CORREO' | 'TELEGRAM'>('CORREO');
+  const [pwdCodeSent, setPwdCodeSent] = useState(false);
+  const [pwdCode, setPwdCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isSendingPwdCode, setIsSendingPwdCode] = useState(false);
+  const [isSavingPwd, setIsSavingPwd] = useState(false);
+  const [visibility, setVisibility] = useState<CandidateVisibilitySettings>(DEFAULT_VISIBILITY);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
@@ -224,20 +274,296 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     return /^[\d\+\s\(\)\-]{7,20}$/.test(val.trim());
   };
 
+  const handleLinkCandidateTelegram = async () => {
+    const cleanPhone = editPhone.trim();
+    if (!cleanPhone || !validatePhoneFormat(cleanPhone)) {
+      setPhoneError('Ingresa un número válido con código de país (ej. +58 412 0000000).');
+      showToast('Número requerido', 'Escribe un número de teléfono válido para vincular con Telegram.', 'error');
+      return;
+    }
+    try {
+      const updated = await candidatesService.updateProfile(
+        { phone: cleanPhone, telegramLinked: true },
+        editEmail.trim() || user?.email,
+      );
+      setProfile(updated);
+      setPhoneError('');
+      const cleanEm = (editEmail.trim() || user?.email || '').toLowerCase();
+      localStorage.setItem(`nexo_candidate_tlg_${cleanEm}`, cleanPhone);
+      localStorage.removeItem(`nexo_candidate_tlg_unlinked_${cleanEm}`);
+      setTelegramLinkedPhone(cleanPhone);
+      showToast(
+        '¡Vinculado con Telegram!',
+        `Tu número ${cleanPhone} quedó conectado para recibir avisos y responder mensajes de las empresas por Telegram.`,
+        'success',
+      );
+    } catch {
+      showToast('Error', 'No se pudo vincular el número con Telegram.', 'error');
+    }
+  };
+
+  const handleUnlinkCandidateTelegram = async () => {
+    const cleanEm = (editEmail.trim() || user?.email || '').toLowerCase();
+    try {
+      localStorage.removeItem(`nexo_candidate_tlg_${cleanEm}`);
+      localStorage.setItem(`nexo_candidate_tlg_unlinked_${cleanEm}`, '1');
+      await candidatesService.updateProfile(
+        { telegramLinked: false },
+        editEmail.trim() || user?.email,
+      );
+    } catch {}
+    setTelegramLinkedPhone('');
+    showToast(
+      'Telegram desvinculado',
+      'Desvinculaste tu cuenta de Telegram. Los mensajes se enviarán únicamente desde la web.',
+      'info',
+    );
+  };
+
+  const handleDirectCvFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isAllowedCvFormat(file.name)) {
+      showToast(
+        'Formato no permitido',
+        'Solo se aceptan archivos de CV en formato PDF o DOC / DOCX.',
+        'error',
+      );
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedCVFile(file);
+    setUploadedCVName(file.name);
+    setIsUploadingDirectCV(true);
+    showToast('Subiendo y analizando CV...', `Procesando ${file.name} con IA...`, 'info');
+
+    try {
+      await candidatesService.uploadCVDocument(file);
+      const candidateFullName =
+        user?.name || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Candidato';
+      const parsedData = await parseAndAnalyzeCV(file, file.name, candidateFullName);
+
+      let finalLocation = parsedData.location || editLocation.trim() || profile?.location || '';
+      if (!finalLocation) {
+        finalLocation = await handleDetectGPSLocation(true);
+      }
+      if (finalLocation) {
+        setEditLocation(finalLocation);
+      }
+
+      const updated = await candidatesService.updateProfile(
+        {
+          email: editEmail ? editEmail.trim() : profile?.email,
+          phone: editPhone ? editPhone.trim() : profile?.phone,
+          title: parsedData.title,
+          bio: parsedData.bio,
+          skills: parsedData.skills,
+          education: parsedData.education,
+          experience: parsedData.experience,
+          location: finalLocation,
+          cvFileName: file.name,
+        },
+        editEmail.trim() || user?.email,
+      );
+
+      setProfile(updated);
+      const now = new Date();
+      setLastReanalysisTime(`Hoy, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+      showToast(
+        '¡CV Subido con Éxito!',
+        `Se guardó ${file.name} (PDF/DOC) y se actualizaron tus competencias y ubicación.`,
+        'success',
+      );
+    } catch {
+      showToast('Error al subir CV', 'No se pudo procesar el archivo. Intenta nuevamente.', 'error');
+    } finally {
+      setIsUploadingDirectCV(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSendCandidatePasswordCode = async () => {
+    const targetEmail = (editEmail || profile?.email || user?.email || '').trim();
+    const targetPhone = (editPhone || profile?.phone || user?.phone || '').trim();
+    const chosenChannel: 'CORREO' | 'TELEGRAM' =
+      !targetEmail && targetPhone ? 'TELEGRAM' : pwdChannel;
+
+    if (chosenChannel === 'CORREO' && !targetEmail) {
+      showToast('Sin correo', 'No tienes un correo puesto. Se enviará el código a tu Telegram.', 'info');
+      setPwdChannel('TELEGRAM');
+    }
+    if (chosenChannel === 'TELEGRAM' && !targetPhone) {
+      showToast('Número requerido', 'Primero ingresa y guarda tu número de Telegram.', 'error');
+      return;
+    }
+
+    setIsSendingPwdCode(true);
+    try {
+      const res = await authService.sendPasswordSecurityCode({
+        canal: chosenChannel,
+        email: targetEmail || undefined,
+        phone: targetPhone || undefined,
+        userId: user?.id,
+      });
+      setPwdCodeSent(true);
+      showToast('Código enviado', res.mensaje, 'success');
+    } catch (err: any) {
+      showToast('No se pudo enviar el código', err?.message || 'Inténtalo nuevamente.', 'error');
+    } finally {
+      setIsSendingPwdCode(false);
+    }
+  };
+
+  const handleConfirmCandidatePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdCode.trim().length < 6) {
+      showToast('Código incompleto', 'Ingresa el código de 6 dígitos.', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('Contraseña muy corta', 'La contraseña debe tener al menos 6 caracteres.', 'error');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      showToast('No coinciden', 'La confirmación de contraseña no coincide.', 'error');
+      return;
+    }
+
+    setIsSavingPwd(true);
+    try {
+      const targetEmail = (editEmail || profile?.email || user?.email || '').trim();
+      const targetPhone = (editPhone || profile?.phone || user?.phone || '').trim();
+      await authService.verifyPasswordSecurityCode({
+        code: pwdCode,
+        newPassword,
+        email: targetEmail || undefined,
+        phone: targetPhone || undefined,
+        userId: user?.id,
+      });
+      showToast('¡Contraseña actualizada!', 'Tu contraseña quedó guardada correctamente.', 'success');
+      setPwdCodeSent(false);
+      setPwdCode('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err: any) {
+      showToast('Código inválido', err?.message || 'Verifica el código de 6 dígitos.', 'error');
+    } finally {
+      setIsSavingPwd(false);
+    }
+  };
+
+  const handleToggleVisibility = async (key: keyof CandidateVisibilitySettings, label: string) => {
+    const next: CandidateVisibilitySettings = {
+      ...visibility,
+      [key]: !visibility[key],
+    };
+    setVisibility(next);
+    try {
+      const updated = await candidatesService.updateProfile(
+        { visibility: next },
+        editEmail.trim() || user?.email,
+      );
+      setProfile(updated);
+      showToast(
+        next[key] ? `${label}: Visible` : `${label}: Oculto`,
+        next[key]
+          ? 'Las empresas podrán ver esta información al revisar tu perfil.'
+          : 'Esta información quedó oculta para los reclutadores.',
+        'info',
+      );
+    } catch {}
+  };
+
+  const handleDetectGPSLocation = async (silentIfUnsupported = false): Promise<string> => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (!silentIfUnsupported) {
+        showToast('GPS no disponible', 'Tu navegador o dispositivo no soporta geolocalización.', 'error');
+      }
+      return '';
+    }
+
+    setIsLocatingGps(true);
+    return new Promise<string>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          let resolvedLocation = `GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+          try {
+            const resp = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=es`,
+            );
+            if (resp.ok) {
+              const data = await resp.json();
+              const addr = data?.address || {};
+              const city =
+                addr.city || addr.town || addr.municipality || addr.village || addr.county || '';
+              const state = addr.state || '';
+              const country = addr.country || '';
+              const parts = [city, state, country].filter(Boolean);
+              if (parts.length > 0) {
+                resolvedLocation = parts.join(', ');
+              }
+            }
+          } catch {
+            // usa coordenadas GPS si Nominatim no responde
+          }
+
+          setEditLocation(resolvedLocation);
+          try {
+            const updated = await candidatesService.updateProfile(
+              { location: resolvedLocation },
+              editEmail.trim() || user?.email,
+            );
+            setProfile(updated);
+          } catch {}
+          setIsLocatingGps(false);
+          showToast('Ubicación GPS detectada', `Ubicación establecida en: ${resolvedLocation}`, 'success');
+          resolve(resolvedLocation);
+        },
+        () => {
+          setIsLocatingGps(false);
+          if (!silentIfUnsupported) {
+            showToast(
+              'Permiso de GPS denegado',
+              'Activa el permiso de ubicación en tu navegador/teléfono o escríbela manualmente.',
+              'error',
+            );
+          }
+          resolve('');
+        },
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+    });
+  };
+
   const loadData = async () => {
     try {
       const email = user?.email || '';
       const [apps, prof, vacs, notifs] = await Promise.all([
-        applicationsService.getByCandidateEmail(email),
+        applicationsService.getByCandidateEmail(email).catch(() => [] as Application[]),
         candidatesService.getProfile(email),
-        vacanciesService.getAll(),
-        notificationsService.getNotifications(),
+        vacanciesService.getAll().catch(() => [] as Vacancy[]),
+        notificationsService.getNotifications().catch(() => [] as NotificationItem[]),
       ]);
 
       setApplications(apps);
       setProfile(prof);
       if (prof.email) setEditEmail(prof.email);
-      if (prof.phone) setEditPhone(prof.phone);
+      if (prof.phone) {
+        setEditPhone(prof.phone);
+        const cleanEm = (prof.email || user?.email || '').trim().toLowerCase();
+        const unlinked = localStorage.getItem(`nexo_candidate_tlg_unlinked_${cleanEm}`) === '1';
+        if (!unlinked) {
+          localStorage.setItem(`nexo_candidate_tlg_${cleanEm}`, prof.phone.trim());
+          setTelegramLinkedPhone(prof.phone.trim());
+        }
+      }
+      setEditLocation(prof.location || '');
+      if (prof.visibility) {
+        setVisibility({ ...DEFAULT_VISIBILITY, ...prof.visibility });
+      }
       if (prof.cvFileName) {
         setUploadedCVName(prof.cvFileName);
         setLastReanalysisTime('Documento verificado');
@@ -269,28 +595,32 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   const preselectedCount = applications.filter((a) => a.status === 'Preseleccionado').length;
   const inReviewCount = applications.filter((a) => a.status === 'En revisión').length;
 
-  // Guardar únicamente cambios de contacto
+  // Guardar únicamente cambios de contacto y ubicación
   const handleSaveContactOnly = async () => {
     if (!validateEmailFormat(editEmail)) {
       setEmailError('Formato inválido. Ejemplo: usuario@correo.com');
       showToast('Correo Inválido', 'Ingresa un correo con formato válido.', 'error');
       return;
     }
-    if (!validatePhoneFormat(editPhone)) {
+    if (editPhone && !validatePhoneFormat(editPhone)) {
       setPhoneError('Formato inválido. Ejemplo: +1 (809) 555-0192');
       showToast('Teléfono Inválido', 'Ingresa un número telefónico válido.', 'error');
       return;
     }
 
     try {
-      const updated = await candidatesService.updateProfile({
-        email: editEmail.trim(),
-        phone: editPhone.trim(),
-      });
+      const updated = await candidatesService.updateProfile(
+        {
+          email: editEmail.trim(),
+          phone: editPhone.trim(),
+          location: editLocation.trim(),
+        },
+        editEmail.trim() || user?.email,
+      );
       setProfile(updated);
       setEmailError('');
       setPhoneError('');
-      showToast('Contacto Actualizado', 'Se guardaron tu correo y teléfono con éxito.', 'success');
+      showToast('Perfil Actualizado', 'Se guardaron tu correo, teléfono y ubicación con éxito.', 'success');
     } catch {
       showToast('Error', 'No se pudieron actualizar los datos de contacto.', 'error');
     }
@@ -387,6 +717,14 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
         candidateFullName
       );
 
+      let finalLocation = parsedData.location || editLocation.trim() || profile?.location || '';
+      if (!finalLocation) {
+        finalLocation = await handleDetectGPSLocation(true);
+      }
+      if (finalLocation) {
+        setEditLocation(finalLocation);
+      }
+
       const updated = await candidatesService.updateProfile({
         email: editEmail ? editEmail.trim() : profile?.email,
         phone: editPhone ? editPhone.trim() : profile?.phone,
@@ -395,7 +733,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
         skills: parsedData.skills,
         education: parsedData.education,
         experience: parsedData.experience,
-        location: parsedData.location,
+        location: finalLocation,
         cvFileName: targetFileName,
       }, editEmail.trim() || user?.email);
 
@@ -416,323 +754,119 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     );
   };
 
+  const sidebarSections: SidebarSection[] = [
+    {
+      title: 'ARCHIVERO PERSONAL',
+      items: [
+        { id: 'applications', label: 'Mis Postulaciones', icon: Briefcase, badge: applications.length },
+        { id: 'messages', label: 'Mensajes y Telegram', icon: MessageSquare },
+        { id: 'profile', label: 'Mi perfil curricular', icon: User },
+        { id: 'notifications', label: 'Notificaciones', icon: Bell, badge: notifications.length || undefined },
+      ],
+    },
+    {
+      title: 'CONVOCATORIAS',
+      items: [
+        { id: 'vacancies', label: 'Explorar vacantes', icon: Search },
+        { id: 'external-catalog', label: 'Catálogo público', icon: ExternalLink, external: true },
+      ],
+    },
+  ];
+
+  const activeTitle =
+    activeTab === 'applications'
+      ? 'Mis Postulaciones'
+      : activeTab === 'messages'
+      ? 'Mensajes y Telegram'
+      : activeTab === 'profile'
+      ? 'Mi Perfil Curricular'
+      : activeTab === 'vacancies'
+      ? 'Explorar Vacantes'
+      : 'Notificaciones';
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
-      <div className="flex-1 flex flex-col md:flex-row">
-        {/* Mobile Backdrop Overlay for Sidebar Drawer */}
-        {isMobileSidebarOpen && (
-          <div
-            onClick={() => setIsMobileSidebarOpen(false)}
-            className="fixed inset-0 z-40 bg-[#090A0C]/75 backdrop-blur-sm md:hidden"
-            aria-hidden="true"
-          />
-        )}
-
-        {/* Left Sidebar (Mobile Off-Canvas Drawer < md | Permanently Fixed Sidebar >= md) */}
-        <aside
-          className={`fixed inset-y-0 left-0 z-50 w-72 md:w-68 md:z-40 bg-[#090A0C]/94 md:bg-[#090A0C]/86 backdrop-blur-xl border-r border-[#F1F2EC]/10 flex flex-col justify-between shrink-0 text-[#F1F2EC] transition-transform duration-200 ease-out overflow-y-auto ${
-            isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-          }`}
-        >
-          {/* Brand header */}
-          <div className="p-5 border-b border-[#F1F2EC]/10 flex items-center justify-between gap-2 select-none">
-            <div
-              onClick={() => {
-                setIsMobileSidebarOpen(false);
-                onNavigate('home');
-              }}
-              className="flex items-center gap-3 cursor-pointer group min-w-0"
-            >
-              <BrandLogo className="w-9 h-9 rounded-xl p-1.5 group-hover:scale-105 transition-transform" />
-              <div className="flex flex-col min-w-0">
-                <span className="font-heading font-bold text-[#F1F2EC] tracking-tight text-base leading-none group-hover:text-[#C8FF45] transition-colors truncate">
-                  PlataformaML
-                </span>
-                <span className="text-[9px] font-mono-tabular tracking-[0.14em] font-semibold text-[#C8FF45] uppercase mt-1 truncate">
-                  EXPEDIENTE DE CANDIDATO
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden p-1.5 rounded-lg text-slate-300 hover:text-[#F1F2EC] bg-slate-800 hover:bg-slate-700 border border-slate-600 shadow-[0_2px_0_#020617] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
-              aria-label="Cerrar menú"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Navigation Links - Full Width Edge to Edge (Grid with shared borders, no floating boxes) */}
-          <div className="flex-1 flex flex-col justify-between w-full">
-            <div className="w-full">
-              <div className="px-5 py-3 border-b border-[#F1F2EC]/10 bg-[#090A0C]/60">
-                <p className="text-[10px] font-mono-tabular font-semibold text-[#777873] uppercase tracking-widest">
-                  ARCHIVERO PERSONAL
-                </p>
-              </div>
-
-              {/* Grid with shared borders spanning FULL WIDTH of nav bar */}
-              <nav className="w-full flex flex-col divide-y divide-[#F1F2EC]/10 border-b border-[#F1F2EC]/10 bg-[#090A0C]/30">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('applications');
-                    setIsMobileSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
-                    activeTab === 'applications'
-                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
-                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        activeTab === 'applications'
-                          ? 'bg-[#C8FF45] text-[#090A0C]'
-                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
-                      }`}
-                    >
-                      <Briefcase className="w-4 h-4" />
-                    </div>
-                    <span>Mis Postulaciones</span>
-                  </div>
-                  <span
-                    className={`text-[10px] font-mono-tabular px-2 py-0.5 rounded-md font-bold transition-colors ${
-                      activeTab === 'applications'
-                        ? 'bg-[#C8FF45] text-[#090A0C]'
-                        : 'bg-[#F1F2EC]/8 text-[#F1F2EC] border border-[#F1F2EC]/12'
-                    }`}
-                  >
-                    {applications.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('profile');
-                    setIsMobileSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
-                    activeTab === 'profile'
-                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
-                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        activeTab === 'profile'
-                          ? 'bg-[#C8FF45] text-[#090A0C]'
-                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
-                      }`}
-                    >
-                      <User className="w-4 h-4" />
-                    </div>
-                    <span>Mi perfil curricular</span>
-                  </div>
-                  <span
-                    className={`text-[9px] font-mono-tabular uppercase px-1.5 py-0.5 rounded transition-colors ${
-                      activeTab === 'profile'
-                        ? 'text-[#C8FF45] bg-[#C8FF45]/15 border border-[#C8FF45]/40'
-                        : 'text-[#777873] group-hover:text-[#F1F2EC]'
-                    }`}
-                  >
-                    Expediente
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileSidebarOpen(false);
-                    onNavigate('vacancies');
-                  }}
-                  className="w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-lg transition-colors bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#4C6FFF] border border-[#F1F2EC]/10">
-                      <Search className="w-4 h-4" />
-                    </div>
-                    <span>Explorar vacantes</span>
-                  </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-[#777873] group-hover:text-[#4C6FFF] transition-colors" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('notifications');
-                    setIsMobileSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-5 py-3.5 text-xs font-semibold transition-all duration-180 cursor-pointer group select-none text-left relative ${
-                    activeTab === 'notifications'
-                      ? 'bg-[#C8FF45]/14 text-[#F1F2EC] border-l-4 border-l-[#C8FF45]'
-                      : 'bg-transparent text-[#777873] hover:text-[#F1F2EC] hover:bg-[#F1F2EC]/5 hover:translate-x-[2px] border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        activeTab === 'notifications'
-                          ? 'bg-[#C8FF45] text-[#090A0C]'
-                          : 'bg-[#F1F2EC]/6 text-[#777873] group-hover:text-[#C8FF45] border border-[#F1F2EC]/10'
-                      }`}
-                    >
-                      <Bell className="w-4 h-4" />
-                    </div>
-                    <span>Notificaciones</span>
-                  </div>
-                  {notifications.length > 0 && (
-                    <span
-                      className={`text-[10px] font-mono-tabular px-2 py-0.5 rounded-md font-bold transition-colors ${
-                        activeTab === 'notifications'
-                          ? 'bg-[#C8FF45] text-[#090A0C]'
-                          : 'bg-[#4C6FFF]/25 text-[#4C6FFF] border border-[#4C6FFF]/40'
-                      }`}
-                    >
-                      {notifications.length}
-                    </span>
-                  )}
-                </button>
-              </nav>
-            </div>
-
-            {/* Support section (Full-width shared borders) */}
-            <div className="w-full border-t border-[#F1F2EC]/10 bg-[#090A0C]/45 p-5 space-y-3">
-              <div className="flex items-center gap-2.5 text-[#F1F2EC] font-semibold text-xs">
-                <div className="p-1.5 rounded-lg bg-[#4C6FFF]/18 text-[#4C6FFF] border border-[#4C6FFF]/35">
-                  <HelpCircle className="w-4 h-4" />
-                </div>
-                <div className="flex flex-col">
-                  <span>Soporte al Postulante</span>
-                  <span className="text-[10px] text-[#777873] font-normal">Mesa de ayuda directa</span>
-                </div>
-              </div>
-              <p className="text-[#777873] leading-snug text-[11px]">
-                Resuelve tus dudas sobre la evaluación curricular y trazabilidad de tus carpetas.
-              </p>
-              <button
-                type="button"
-                onClick={() =>
-                  alert('Soporte PlataformaML: Canal de asistencia disponible vía WhatsApp al +1 (809) 555-0199')
-                }
-                className="w-full px-3 py-2 rounded-xl bg-[#2f4cd6] hover:bg-[#3d5ae5] border border-[#4C6FFF]/70 text-white font-bold flex items-center justify-center text-center text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#172554] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_5px_0_#172554] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer"
-              >
-                <span>Contactar a Soporte</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Logout button - Full width with Red Exit preserved */}
-          <div className="sticky bottom-0 bg-[#090A0C]/95 backdrop-blur-md border-t border-[#F1F2EC]/10 mt-auto z-10 w-full p-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                onNavigate('login');
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_0_#881337] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_5px_0_#881337] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all duration-150 cursor-pointer group select-none"
-            >
-              <div className="flex items-center gap-3">
-                <LogOut className="w-4 h-4 text-white shrink-0" />
-                <span className="font-bold text-white transition-colors">
-                  Cerrar sesión
-                </span>
-              </div>
-              <div
-                className="flex items-center gap-1.5 text-[10px] font-mono-tabular font-bold text-rose-50"
-                title="Finalizar sesión activa"
-              >
-                <span>Salir</span>
-                <Power className="w-3 h-3 text-rose-100" />
-              </div>
-            </button>
-          </div>
-        </aside>
-
-        {/* Main Content Area (Offset on md+ screens to account for fixed sidebar) */}
-        <div className="flex-1 flex flex-col min-w-0 md:pl-68">
-          {/* Glassmorphic Topbar */}
-          <header className="h-14 sm:h-16 sticky top-0 z-30 bg-[#090A0C]/82 backdrop-blur-xl border-b border-[#F1F2EC]/10 px-3 sm:px-8 flex items-center justify-between gap-2 text-[#F1F2EC]">
-            <div className="flex items-center gap-2 text-xs text-[#777873] min-w-0">
-              <button
-                type="button"
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="md:hidden p-2 -ml-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[#F1F2EC] hover:text-[#C8FF45] hover:border-[#C8FF45]/40 shadow-[0_3px_0_#020617] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
-                aria-label="Abrir menú de navegación"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
-              <span className="hidden sm:inline font-medium text-[#777873] shrink-0">Portal del candidato</span>
-              <ChevronRight className="hidden sm:inline w-3.5 h-3.5 text-[#777873] shrink-0" />
-              <span className="text-[#C8FF45] font-semibold truncate">
-                {activeTab === 'applications'
-                  ? 'Mis Postulaciones'
-                  : activeTab === 'profile'
-                  ? 'Mi Perfil Curricular'
-                  : activeTab === 'vacancies'
-                  ? 'Explorar Vacantes'
-                  : 'Notificaciones'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {/* Theme toggle with global animation */}
-              <ThemeToggle />
-
-              {/* User Avatar Badge - Navigates directly to Mi Perfil */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('profile')}
-                className="flex items-center gap-2 sm:gap-2.5 pl-1.5 sm:pl-2 py-1 sm:py-1.5 pr-2.5 sm:pr-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-[#C8FF45]/60 shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer group select-none"
-                title="Ir a Mi Perfil Curricular"
-              >
-                {profilePhoto ? (
-                  <img
-                    src={profilePhoto}
-                    alt={user?.name || 'Usuario'}
-                    className="w-7 h-7 rounded-md object-cover border border-[#C8FF45]/50 group-hover:border-[#C8FF45] transition-colors shrink-0"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-md bg-[#4C6FFF] text-[#F1F2EC] font-bold text-xs flex items-center justify-center transition-colors shrink-0">
-                    {user?.name ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'VM'}
-                  </div>
-                )}
-                <span className="hidden sm:inline text-xs font-semibold text-[#F1F2EC] leading-tight group-hover:text-[#C8FF45] transition-colors truncate max-w-[140px] md:max-w-none">
-                  {user?.name || 'Candidato'}
-                </span>
-              </button>
-            </div>
-          </header>
-
-          {/* Main Dashboard Container with Fast Left-to-Right Gradual Reveal */}
-          <div
-            key={activeTab}
-            className={`animate-page-enter-left ${
-              activeTab === 'profile' || activeTab === 'applications' ? 'w-full flex-1 flex flex-col' : 'p-6 sm:p-8 space-y-6'
-            }`}
+      <AppShell
+        sections={sidebarSections}
+        activeId={activeTab}
+        onSelect={(id) => {
+          if (id === 'external-catalog') {
+            onNavigate('vacancies');
+            return;
+          }
+          if (id !== 'messages') {
+            setFocusChatAppId(undefined);
+          }
+          setActiveTab(id as typeof activeTab);
+        }}
+        brandSubtitle="EXPEDIENTE DE CANDIDATO"
+        crumbRoot="Portal del candidato"
+        title={activeTitle}
+        roleLabel="Candidato"
+        userAvatarUrl={profilePhoto}
+        onLogout={() => {
+          logout();
+          onNavigate('login');
+        }}
+        onBrandClick={() => onNavigate('vacancies')}
+        topbarExtra={
+          <button
+            type="button"
+            onClick={() => setActiveTab('profile')}
+            className="press flex items-center gap-2 pl-1.5 py-1 pr-2.5 rounded-xl bg-white/70 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 border border-[#c8b193] dark:border-slate-600 transition-colors cursor-pointer group select-none"
+            title="Ir a Mi Perfil Curricular"
           >
-            {/* Header when on vacancies or notifications tabs */}
-            {activeTab !== 'applications' && activeTab !== 'profile' && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                    {activeTab === 'vacancies'
-                      ? 'Explorar Vacantes Disponibles'
-                      : 'Centro de Notificaciones'}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    {activeTab === 'vacancies'
-                      ? 'Encuentra convocatorias laborales abiertas compatibles con tu perfil profesional.'
-                      : 'Historial y estado de los avisos remitidos por correo electrónico y WhatsApp.'}
-                  </p>
-                </div>
-
+            {profilePhoto ? (
+              <img
+                src={profilePhoto}
+                alt={user?.name || 'Usuario'}
+                className="w-7 h-7 rounded-md object-cover border border-[#0B5D46]/40 dark:border-[#C8FF45]/50 shrink-0"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-md bg-[#4C6FFF] text-[#F1F2EC] font-bold text-xs flex items-center justify-center shrink-0">
+                {user?.name ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'VM'}
               </div>
             )}
+            <span className="hidden sm:inline text-xs font-semibold text-[#3a2818] dark:text-[#F1F2EC] leading-tight truncate max-w-[140px]">
+              {user?.name || 'Candidato'}
+            </span>
+          </button>
+        }
+      >
+        <div
+          key={activeTab}
+          className={`animate-page-enter-left ${
+            activeTab === 'profile' || activeTab === 'applications'
+              ? 'w-full flex-1 flex flex-col'
+              : 'p-4 sm:p-6 lg:p-8 space-y-6 flex-1'
+          }`}
+        >
+          {/* Header when on vacancies, messages or notifications tabs */}
+          {activeTab !== 'applications' && activeTab !== 'profile' && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#3a2818] dark:text-slate-100 tracking-tight">
+                  {activeTab === 'vacancies'
+                    ? 'Explorar Vacantes Disponibles'
+                    : activeTab === 'messages'
+                    ? 'Mensajes con Reclutamiento'
+                    : 'Centro de Notificaciones'}
+                </h1>
+                <p className="text-xs sm:text-sm text-[#70553b] dark:text-slate-400 mt-1">
+                  {activeTab === 'vacancies'
+                    ? 'Encuentra convocatorias laborales abiertas compatibles con tu perfil profesional.'
+                    : activeTab === 'messages'
+                    ? 'Conversa directamente con RRHH de cada empresa. Lo que envíen también llega a tu Telegram.'
+                    : 'Historial y estado de los avisos remitidos por correo electrónico y Telegram.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: MESSAGES (WEB <-> TELEGRAM CHAT) */}
+          {activeTab === 'messages' && (
+            <ChatPanel focusApplicationId={focusChatAppId} className="w-full" />
+          )}
 
             {/* TAB: APPLICATIONS */}
             {activeTab === 'applications' && (() => {
@@ -1186,15 +1320,31 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                                       </div>
 
                                       {/* Pie de la Mini-Carpeta */}
-                                      <div className="pt-2.5 border-t border-[#d5be9f] dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                      <div className="pt-2.5 border-t border-[#d5be9f] dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
                                         <span className="text-[#6d4f31] dark:text-slate-400 font-semibold flex items-center gap-1">
                                           <Paperclip className="w-3 h-3 rotate-45" /> #{app.id.slice(0, 6)}
                                         </span>
 
-                                        <span className="text-emerald-800 dark:text-emerald-300 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
-                                          <span>Abrir</span>
-                                          <ChevronRight className="w-3.5 h-3.5" />
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setFocusChatAppId(app.id);
+                                              setActiveTab('messages');
+                                            }}
+                                            className="press px-2 py-0.5 rounded-md bg-[#0B5D46]/10 hover:bg-[#0B5D46]/20 dark:bg-[#4C6FFF]/15 dark:hover:bg-[#4C6FFF]/25 text-[#0B5D46] dark:text-[#C8FF45] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                            title="Abrir chat de esta postulación"
+                                          >
+                                            <MessageSquare className="w-3 h-3" />
+                                            <span>Chat</span>
+                                          </button>
+
+                                          <span className="text-emerald-800 dark:text-emerald-300 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
+                                            <span>Abrir</span>
+                                            <ChevronRight className="w-3.5 h-3.5" />
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1233,7 +1383,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                       </button>
                     </div>
 
-                    {/* Card 2: Alertas WhatsApp y Correo */}
+                    {/* Card 2: Alertas Telegram y Correo */}
                     <div className="p-6 sm:p-8 space-y-2">
                       <div className="flex items-center gap-2 text-[#3a2818] dark:text-slate-100 font-bold text-xs sm:text-sm">
                         <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
@@ -1242,7 +1392,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                         <span>No te pierdas ninguna novedad</span>
                       </div>
                       <p className="text-xs text-[#70553b] dark:text-slate-400 leading-relaxed">
-                        Te avisaremos por correo o WhatsApp cuando tu postulación cambie de estado.
+                        Te avisaremos por correo o Telegram cuando tu postulación cambie de estado.
                       </p>
                       <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 pt-1">
                         valeria.mendoza@correo.com
@@ -1269,6 +1419,26 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                         ID: {profile.id}
                       </span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={triggerDirectCvUpload}
+                      disabled={isUploadingDirectCV}
+                      className="press inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black bg-[#0B5D46] hover:bg-[#094B38] text-white dark:bg-[#C8FF45] dark:hover:bg-[#d4ff6b] dark:text-[#090A0C] shadow-xs cursor-pointer disabled:opacity-60"
+                    >
+                      {isUploadingDirectCV ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      <span>
+                        {isUploadingDirectCV
+                          ? 'Subiendo CV...'
+                          : profile.cvFileName || uploadedCVName
+                          ? 'Subir / Cambiar CV (PDF o DOC)'
+                          : 'Subir CV (PDF o DOC)'}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -1399,22 +1569,70 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             {profile.bio}
                           </p>
                         )}
+
+                        {/* Botón directo y visible para Subir CV en PDF o DOC/DOCX */}
+                        <div className="pt-2 space-y-2">
+                          <button
+                            type="button"
+                            onClick={triggerDirectCvUpload}
+                            disabled={isUploadingDirectCV}
+                            className="press w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-[#0B5D46] hover:bg-[#094B38] text-white dark:bg-[#C8FF45] dark:hover:bg-[#d5ff6b] dark:text-[#090A0C] border border-[#073F2F] dark:border-[#C8FF45] shadow-xs cursor-pointer disabled:opacity-60"
+                          >
+                            {isUploadingDirectCV ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileUp className="w-4 h-4" />
+                            )}
+                            <span>
+                              {isUploadingDirectCV
+                                ? 'Procesando CV con IA...'
+                                : 'SUBIR CV (SOLO PDF O DOC)'}
+                            </span>
+                          </button>
+
+                          {(uploadedCVName || profile.cvFileName) && (
+                            <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-[11px]">
+                              <span className="font-bold text-emerald-800 dark:text-[#C8FF45] truncate flex items-center gap-1.5">
+                                <FileText className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{uploadedCVName || profile.cvFileName}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleDownloadCV}
+                                className="text-[10px] font-black underline text-[#0B5D46] dark:text-[#C8FF45] shrink-0 cursor-pointer"
+                              >
+                                Descargar
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Sub-block 2: Canales de Contacto Directo */}
+                    {/* Sub-block 2: Canales de Contacto, Ubicación Editable + GPS y Controles de Visibilidad */}
                     <div className="p-6 sm:p-8 space-y-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                          Canales de Contacto
+                          Contacto, Ubicación & Privacidad
                         </h4>
-                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                          Formato Válido
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleVisibility('profileVisible', 'Perfil Completo')}
+                          className={`press inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${
+                            visibility.profileVisible
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-[#C8FF45]/12 dark:text-[#C8FF45] dark:border-[#C8FF45]/30'
+                              : 'bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300'
+                          }`}
+                          title="Elegir si las empresas pueden ver tu perfil completo"
+                        >
+                          {visibility.profileVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                          <span>{visibility.profileVisible ? 'Perfil Visible' : 'Perfil Oculto'}</span>
+                        </button>
                       </div>
 
                       <div className="space-y-2.5 text-xs">
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
+                        {/* Correo con switch de visibilidad */}
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
                               <Mail className="w-3.5 h-3.5" />
@@ -1423,31 +1641,255 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                               {editEmail || profile.email}
                             </span>
                           </div>
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">Email</span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVisibility('showEmail', 'Correo electrónico')}
+                            className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer shrink-0 ml-2 ${
+                              visibility.showEmail
+                                ? 'text-emerald-700 dark:text-[#C8FF45] bg-emerald-500/10'
+                                : 'text-slate-400 bg-slate-500/10'
+                            }`}
+                            title="Mostrar u ocultar tu correo a las empresas"
+                          >
+                            {visibility.showEmail ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{visibility.showEmail ? 'Visible' : 'Oculto'}</span>
+                          </button>
                         </div>
 
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                              <Phone className="w-3.5 h-3.5" />
+                        {/* Teléfono / Telegram editable con botón de Conectar a Telegram y switch de visibilidad */}
+                        <div className="p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                                <Phone className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-[11px] font-bold text-slate-700 dark:text-[#F1F2EC]">
+                                Teléfono / Telegram
+                              </span>
+                              {telegramLinkedPhone && telegramLinkedPhone === editPhone.trim() && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                                  <Check className="w-2.5 h-2.5" /> Telegram vinculado
+                                </span>
+                              )}
                             </div>
-                            <span className="font-semibold text-slate-800 dark:text-[#F1F2EC] truncate">
-                              {editPhone || profile.phone}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleVisibility('showPhone', 'Teléfono / Telegram')}
+                              className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer shrink-0 ${
+                                visibility.showPhone
+                                  ? 'text-emerald-700 dark:text-[#C8FF45] bg-emerald-500/10'
+                                  : 'text-slate-400 bg-slate-500/10'
+                              }`}
+                              title="Mostrar u ocultar tu teléfono a las empresas"
+                            >
+                              {visibility.showPhone ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                              <span>{visibility.showPhone ? 'Visible' : 'Oculto'}</span>
+                            </button>
                           </div>
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">WhatsApp</span>
+
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="tel"
+                              value={editPhone}
+                              onChange={(e) => setEditPhone(e.target.value)}
+                              placeholder="+58 412 0000000"
+                              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC] focus:outline-none focus:border-[#0B5D46] dark:focus:border-[#C8FF45]"
+                            />
+
+                            {/* Si ya está conectado, botón para Desvincular; si no, botón con logo de Telegram para Conectar */}
+                            {telegramLinkedPhone && telegramLinkedPhone === editPhone.trim() ? (
+                              <button
+                                type="button"
+                                onClick={handleUnlinkCandidateTelegram}
+                                title="Desvincular Telegram de tu perfil"
+                                className="press inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/30 transition-all"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Desvincular</span>
+                              </button>
+                            ) : (
+                              editPhone.trim().length >= 5 && (
+                                <button
+                                  type="button"
+                                  onClick={handleLinkCandidateTelegram}
+                                  title="Conectar a Telegram"
+                                  className="press group relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-[#229ED9] hover:bg-[#1d8ec4] text-white border-[#1b86b8] shadow-xs transition-all"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    className="w-3.5 h-3.5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:-rotate-6"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                                  </svg>
+                                  <span>Conectar a Telegram</span>
+                                </button>
+                              )
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.14)]">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                              <MapPin className="w-3.5 h-3.5" />
+                        {/* Ubicación editable + Botón GPS + Switch de visibilidad */}
+                        <div className="p-3 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                                <MapPin className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-[11px] font-bold text-slate-700 dark:text-[#F1F2EC]">
+                                Ubicación (Extraída del CV o GPS)
+                              </span>
                             </div>
-                            <span className="font-semibold text-slate-800 dark:text-[#F1F2EC] truncate">
-                              {profile.location}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleVisibility('showLocation', 'Ubicación')}
+                              className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer shrink-0 ${
+                                visibility.showLocation
+                                  ? 'text-emerald-700 dark:text-[#C8FF45] bg-emerald-500/10'
+                                  : 'text-slate-400 bg-slate-500/10'
+                              }`}
+                              title="Mostrar u ocultar tu ubicación a las empresas"
+                            >
+                              {visibility.showLocation ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                              <span>{visibility.showLocation ? 'Visible' : 'Oculto'}</span>
+                            </button>
                           </div>
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] shrink-0 font-medium ml-2">Ubicación</span>
+
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editLocation}
+                              onChange={(e) => setEditLocation(e.target.value)}
+                              placeholder="Ciudad, Estado, País..."
+                              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC] focus:outline-none focus:border-[#0B5D46] dark:focus:border-[#C8FF45]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDetectGPSLocation(false)}
+                              disabled={isLocatingGps}
+                              className="press px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#EFE5D4] hover:bg-[#E5D6BE] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#3A2818] dark:text-[#C8FF45] border border-[#C8B193] dark:border-slate-700 inline-flex items-center gap-1 cursor-pointer shrink-0"
+                              title="Detectar ubicación con el GPS del teléfono o navegador"
+                            >
+                              {isLocatingGps ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <LocateFixed className="w-3.5 h-3.5" />
+                              )}
+                              <span>GPS</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveContactOnly}
+                              className="press px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] cursor-pointer shrink-0"
+                              title="Guardar ubicación"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Seguridad: Cambiar o Agregar Contraseña con código al Correo o Telegram */}
+                        <div className="p-3.5 rounded-xl bg-white dark:bg-[#F1F2EC]/[0.055] border border-[#c8b193]/50 dark:border-[#F1F2EC]/16 space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-slate-800 dark:text-[#F1F2EC] flex items-center gap-1.5">
+                              <Lock className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Cambiar o Agregar Contraseña</span>
+                            </span>
+                            <div className="inline-flex rounded-lg p-0.5 bg-[#EFE5D4] dark:bg-[#090A0C] border border-[#C8B193] dark:border-white/10">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPwdChannel('CORREO');
+                                  setPwdCodeSent(false);
+                                }}
+                                className={`press px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer ${
+                                  pwdChannel === 'CORREO'
+                                    ? 'bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C]'
+                                    : 'text-[#70553B] dark:text-[#9A9B94]'
+                                }`}
+                              >
+                                Código al Correo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPwdChannel('TELEGRAM');
+                                  setPwdCodeSent(false);
+                                }}
+                                className={`press px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer ${
+                                  pwdChannel === 'TELEGRAM'
+                                    ? 'bg-[#229ED9] text-white'
+                                    : 'text-[#70553B] dark:text-[#9A9B94]'
+                                }`}
+                              >
+                                Código Telegram
+                              </button>
+                            </div>
+                          </div>
+
+                          {!pwdCodeSent ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10.5px] text-[#70553B] dark:text-[#9A9B94] leading-snug">
+                                {pwdChannel === 'CORREO' && (editEmail || profile.email)
+                                  ? `Recibirás un código de 6 dígitos en ${editEmail || profile.email}.`
+                                  : `Recibirás un código de 6 dígitos en tu Telegram (${editPhone || profile.phone || 'sin número'}).`}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleSendCandidatePasswordCode}
+                                disabled={isSendingPwdCode}
+                                className="press px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] cursor-pointer shrink-0 disabled:opacity-50"
+                              >
+                                {isSendingPwdCode ? 'Enviando...' : 'Enviar código'}
+                              </button>
+                            </div>
+                          ) : (
+                            <form onSubmit={handleConfirmCandidatePasswordChange} className="space-y-2 pt-1 animate-pop-in">
+                              <input
+                                type="text"
+                                value={pwdCode}
+                                onChange={(e) => setPwdCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                placeholder="Código de 6 dígitos"
+                                className="w-full px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular tracking-widest bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC]"
+                                required
+                              />
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                <input
+                                  type="password"
+                                  value={newPassword}
+                                  onChange={(e) => setNewPassword(e.target.value)}
+                                  placeholder="Nueva contraseña"
+                                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC]"
+                                  required
+                                />
+                                <input
+                                  type="password"
+                                  value={confirmNewPassword}
+                                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                  placeholder="Confirmar contraseña"
+                                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC]"
+                                  required
+                                />
+                              </div>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setPwdCodeSent(false)}
+                                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-[#70553B] dark:text-[#9A9B94] cursor-pointer"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={isSavingPwd}
+                                  className="press px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] cursor-pointer disabled:opacity-50"
+                                >
+                                  {isSavingPwd ? 'Guardando...' : 'Guardar contraseña'}
+                                </button>
+                              </div>
+                            </form>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1455,6 +1897,22 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                     {/* Sub-block 3: CV Actions & Immutable Notice */}
                     <div className="p-6 sm:p-8 space-y-4 flex-1 flex flex-col justify-between">
                       <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={triggerDirectCvUpload}
+                          disabled={isUploadingDirectCV}
+                          className="w-full inline-flex flex-row items-center justify-center gap-2.5 px-4 py-3 rounded-xl text-xs font-black text-slate-950 bg-[#C8FF45] hover:bg-[#d5ff6b] border border-[#9ecb2e] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_4px_0_#658517] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer select-none disabled:opacity-60"
+                        >
+                          {isUploadingDirectCV ? (
+                            <Loader2 className="w-4 h-4 shrink-0 animate-spin text-slate-950" />
+                          ) : (
+                            <Upload className="w-4 h-4 shrink-0 text-slate-950" />
+                          )}
+                          <span className="leading-none tracking-wide">
+                            {isUploadingDirectCV ? 'SUBIENDO CV...' : 'SUBIR CV (PDF O DOC)'}
+                          </span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={handleDownloadCV}
@@ -1605,15 +2063,29 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                           </div>
                           <span>Habilidades y Tecnologías Extraídas del CV</span>
                         </h3>
-                        {profile.skills.length > 0 ? (
-                          <span className="text-[11px] text-emerald-600 dark:text-[#C8FF45] font-bold bg-emerald-50 dark:bg-[#C8FF45]/10 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-[#C8FF45]/30 flex items-center gap-1">
-                            <ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> {profile.skills.length} validadas por IA
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-medium">
-                            Sin CV adjunto
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVisibility('showSkills', 'Habilidades')}
+                            className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border cursor-pointer ${
+                              visibility.showSkills
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-[#C8FF45]/10 dark:text-[#C8FF45] dark:border-[#C8FF45]/30'
+                                : 'bg-slate-200/70 text-slate-600 border-slate-300 dark:bg-white/10 dark:text-slate-400 dark:border-white/15'
+                            }`}
+                          >
+                            {visibility.showSkills ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{visibility.showSkills ? 'Visible para empresas' : 'Oculto para empresas'}</span>
+                          </button>
+                          {profile.skills.length > 0 ? (
+                            <span className="text-[11px] text-emerald-600 dark:text-[#C8FF45] font-bold bg-emerald-50 dark:bg-[#C8FF45]/10 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-[#C8FF45]/30 flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> {profile.skills.length} validadas por IA
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 dark:text-[#777873] font-medium">
+                              Sin CV adjunto
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="pt-1">
@@ -1648,9 +2120,18 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             </div>
                             <span>Formación Académica</span>
                           </h3>
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-semibold flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5 text-amber-500" /> Extraído del CV
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVisibility('showEducation', 'Formación Académica')}
+                            className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer ${
+                              visibility.showEducation
+                                ? 'text-emerald-700 dark:text-[#C8FF45] bg-emerald-500/10'
+                                : 'text-slate-400 bg-slate-500/10'
+                            }`}
+                          >
+                            {visibility.showEducation ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{visibility.showEducation ? 'Visible' : 'Oculto'}</span>
+                          </button>
                         </div>
 
                         {profile.education.length > 0 ? (
@@ -1686,9 +2167,18 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             </div>
                             <span>Experiencia Laboral Comprobada</span>
                           </h3>
-                          <span className="text-[10px] text-slate-400 dark:text-[#777873] font-semibold flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5 text-amber-500" /> Extraído del CV
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVisibility('showExperience', 'Experiencia Laboral')}
+                            className={`press inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer ${
+                              visibility.showExperience
+                                ? 'text-emerald-700 dark:text-[#C8FF45] bg-emerald-500/10'
+                                : 'text-slate-400 bg-slate-500/10'
+                            }`}
+                          >
+                            {visibility.showExperience ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{visibility.showExperience ? 'Visible' : 'Oculto'}</span>
+                          </button>
                         </div>
 
                         {profile.experience.length > 0 ? (
@@ -1951,25 +2441,27 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                     Bandeja de Notificaciones Automáticas
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-[#777873] mt-0.5">
-                    Historial de mensajes remitidos automáticamente a través de WhatsApp y Correo
+                    Historial de mensajes remitidos automáticamente a través de Telegram y Correo
                     Electrónico.
                   </p>
                 </div>
 
                 <div className="space-y-3 pt-2">
-                  {notifications.map((notif) => (
+                  {notifications.map((notif) => {
+                    const isInstant = notif.channel === 'Telegram' || notif.channel === 'WhatsApp';
+                    return (
                     <div
                       key={notif.id}
                       className="p-4 rounded-2xl border border-slate-100 dark:border-[#F1F2EC]/12 bg-slate-50/60 dark:bg-[#090A0C]/60 dark:backdrop-blur-lg flex items-start gap-3.5 dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.06)]"
                     >
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          notif.channel === 'WhatsApp'
+                          isInstant
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-[#C8FF45]/15 dark:text-[#C8FF45] dark:border dark:border-[#C8FF45]/30'
                             : 'bg-sky-100 text-sky-700 dark:bg-[#4C6FFF]/18 dark:text-[#4C6FFF] dark:border dark:border-[#4C6FFF]/35'
                         }`}
                       >
-                        {notif.channel === 'WhatsApp' ? (
+                        {isInstant ? (
                           <MessageSquare className="w-5 h-5" />
                         ) : (
                           <Mail className="w-5 h-5" />
@@ -1982,12 +2474,12 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             <span className="font-bold text-slate-900 dark:text-[#F1F2EC]">{notif.title}</span>
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                                notif.channel === 'WhatsApp'
+                                isInstant
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#C8FF45]/12 dark:text-[#C8FF45] dark:border-[#C8FF45]/30'
                                   : 'bg-sky-50 text-sky-700 border border-sky-200 dark:bg-[#4C6FFF]/14 dark:text-[#4C6FFF] dark:border-[#4C6FFF]/30'
                               }`}
                             >
-                              Canal {notif.channel}
+                              Canal {isInstant ? 'Telegram' : notif.channel}
                             </span>
                           </div>
                           <span className="text-[11px] text-slate-400 dark:text-[#777873]">{notif.timestamp}</span>
@@ -1996,13 +2488,13 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                         <p className="text-[10px] text-slate-400 dark:text-[#777873]">Destinatario: {notif.recipient}</p>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
             )}
-          </div>
         </div>
-      </div>
+      </AppShell>
 
       {/* Detail Modal */}
       <ApplicationDetailModal
@@ -2097,7 +2589,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                    <span>Teléfono / WhatsApp</span>
+                    <span>Teléfono / Telegram</span>
                   </label>
                   {editPhone && validatePhoneFormat(editPhone) ? (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
@@ -2106,25 +2598,54 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                   ) : null}
                 </div>
 
-                <input
-                  type="tel"
-                  value={editPhone}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setEditPhone(val);
-                    if (!val) {
-                      setPhoneError('El teléfono es obligatorio.');
-                    } else if (!validatePhoneFormat(val)) {
-                      setPhoneError('Formato inválido (ej: +1 (809) 555-0192).');
-                    } else {
-                      setPhoneError('');
-                    }
-                  }}
-                  placeholder="+1 (809) 000-0000"
-                  className={`w-full neu-inset-field rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-all ${
-                    phoneError ? 'ring-2 ring-rose-500/50' : 'focus:ring-2 focus:ring-emerald-500/30'
-                  }`}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditPhone(val);
+                      if (!val) {
+                        setPhoneError('El teléfono es obligatorio.');
+                      } else if (!validatePhoneFormat(val)) {
+                        setPhoneError('Formato inválido (ej: +58 412 0000000).');
+                      } else {
+                        setPhoneError('');
+                      }
+                    }}
+                    placeholder="+58 412 0000000"
+                    className={`flex-1 min-w-0 neu-inset-field rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-all ${
+                      phoneError ? 'ring-2 ring-rose-500/50' : 'focus:ring-2 focus:ring-emerald-500/30'
+                    }`}
+                  />
+
+                  {editPhone.trim().length >= 5 && (
+                    <button
+                      type="button"
+                      onClick={handleLinkCandidateTelegram}
+                      title="Conectar a Telegram"
+                      className={`press group inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold cursor-pointer shrink-0 border transition-all ${
+                        telegramLinkedPhone && telegramLinkedPhone === editPhone.trim()
+                          ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40'
+                          : 'bg-[#229ED9] hover:bg-[#1d8ec4] text-white border-[#1b86b8]'
+                      }`}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:-rotate-6"
+                        aria-hidden="true"
+                      >
+                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                      </svg>
+                      <span className="hidden sm:inline">
+                        {telegramLinkedPhone && telegramLinkedPhone === editPhone.trim()
+                          ? 'Vinculado'
+                          : 'Conectar a Telegram'}
+                      </span>
+                    </button>
+                  )}
+                </div>
                 {phoneError && (
                   <p className="text-[10px] text-rose-500 font-semibold flex items-center gap-1 pt-0.5">
                     <AlertCircle className="w-3 h-3" /> {phoneError}
@@ -2133,17 +2654,43 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
               </div>
             </div>
 
+            {/* Ubicación en el modal con detección GPS */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                <span>Ubicación (se extrae del CV o puedes usar el GPS de tu teléfono)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  placeholder="Ej. Maracaibo, Zulia, Venezuela"
+                  className="flex-1 neu-inset-field rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleDetectGPSLocation(false)}
+                  disabled={isLocatingGps}
+                  className="press px-3.5 py-2.5 rounded-xl text-xs font-bold bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  {isLocatingGps ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LocateFixed className="w-3.5 h-3.5" />}
+                  <span>Usar GPS</span>
+                </button>
+              </div>
+            </div>
+
             {/* Guardar solo contacto */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-[#c8b193]/30 dark:border-slate-800">
               <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                Puedes guardar tu correo y teléfono sin necesidad de subir un nuevo CV.
+                Puedes guardar tu correo, teléfono y ubicación sin necesidad de subir un nuevo CV.
               </span>
               <button
                 type="button"
                 onClick={handleSaveContactOnly}
                 className="neu-raised-btn self-end sm:self-auto px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#fbf9f4] dark:bg-slate-800 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer transition-all"
               >
-                Guardar Contacto
+                Guardar Contacto y Ubicación
               </button>
             </div>
           </div>
@@ -2194,12 +2741,21 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
             <div className="border-2 border-dashed border-[#c8b193] dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 rounded-2xl p-6 text-center transition-colors cursor-pointer bg-[#f9f5ee]/70 dark:bg-slate-900/40 group shadow-inner">
               <input
                 type="file"
-                accept=".pdf,.docx,.doc"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 className="hidden"
                 id="cv-upload-input"
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
                     const file = e.target.files[0];
+                    if (!isAllowedCvFormat(file.name)) {
+                      showToast(
+                        'Formato no permitido',
+                        'Solo se aceptan archivos de CV en formato PDF o DOC / DOCX.',
+                        'error',
+                      );
+                      e.target.value = '';
+                      return;
+                    }
                     setSelectedCVFile(file);
                     setUploadedCVName(file.name);
                     showToast('Documento cargado', `Se seleccionó ${file.name}. Listo para reanálisis.`, 'info');
@@ -2215,7 +2771,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                     Haz clic para seleccionar o arrastra tu nuevo CV
                   </span>
                   <span className="text-[11px] text-slate-400">
-                    Soporta PDF, DOCX hasta 10 MB
+                    Únicamente archivos PDF o DOC / DOCX (hasta 5 MB)
                   </span>
                 </div>
               </label>
@@ -2293,6 +2849,15 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Input oculto para carga directa de CV (solo PDF, DOC, DOCX) */}
+      <input
+        type="file"
+        ref={directCvInputRef}
+        onChange={handleDirectCvFileChange}
+        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+      />
 
       {/* Input oculto para carga de foto de perfil */}
       <input

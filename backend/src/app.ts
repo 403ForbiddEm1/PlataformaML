@@ -16,6 +16,7 @@ import { adminRouter } from './routes/admin.routes';
 import { companyRouter } from './routes/company.routes';
 import { chatRouter } from './routes/chat.routes';
 import { webhooksRouter } from './routes/webhooks.routes';
+import { supportRouter } from './routes/support.routes';
 import { manejarErrores, noEncontrado } from './middlewares/error.middleware';
 
 export const app = express();
@@ -80,6 +81,7 @@ app.use('/api/company', companyRouter);
 app.use('/api/conversations', chatRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/support', supportRouter);
 
 // Manejo de errores y 404
 app.use(noEncontrado);

@@ -82,7 +82,7 @@ export async function listarMiembros(actor: Actor) {
 
 export async function invitarMiembro(
   actor: Actor,
-  datos: { correo: string; rol: 'RRHH' | 'ADMIN' },
+  datos: { correo: string; rol: 'RRHH' | 'ADMIN'; nombre?: string; telefono?: string },
   ip?: string,
 ) {
   exigirAdmin(actor);
@@ -108,11 +108,21 @@ export async function invitarMiembro(
 
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
   const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const queryExtras = [
+    datos.nombre ? `name=${encodeURIComponent(datos.nombre.trim())}` : '',
+    datos.telefono ? `phone=${encodeURIComponent(datos.telefono.trim())}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  const confirmUrl = `${appUrl}/accept-invitation?token=${tokenPlano}${queryExtras ? `&${queryExtras}` : ''}`;
+
   await emailService
     .sendEmail({
       to: correo,
-      subject: `Invitación para unirte a ${empresa?.nombre ?? 'una empresa'}`,
-      text: `Fuiste invitado a la plataforma de reclutamiento.\n\nCrea tu cuenta aquí (válido 72 horas):\n${appUrl}/accept-invitation?token=${tokenPlano}`,
+      subject: `Confirmación de registro en ${empresa?.nombre ?? 'la empresa'} (${datos.rol === 'ADMIN' ? 'Administrador' : 'RRHH'})`,
+      text: `Hola${datos.nombre ? ` ${datos.nombre}` : ''},\n\nEl administrador de ${empresa?.nombre ?? 'tu empresa'} te registró con el rol de ${datos.rol === 'ADMIN' ? 'Administrador' : 'Recursos Humanos (RRHH)'}.\n\nConfirma tu registro y activa tu acceso aquí (válido por 72 horas):\n${confirmUrl}\n\nNota: Todas las notificaciones y mensajes a candidatos se enviarán desde el correo y Telegram oficial de ${empresa?.nombre ?? 'la empresa'}.`,
+      senderName: empresa?.nombre,
+      replyTo: empresa?.correoContacto || undefined,
       empresaId,
       tipo: 'INVITACION_EQUIPO',
     })

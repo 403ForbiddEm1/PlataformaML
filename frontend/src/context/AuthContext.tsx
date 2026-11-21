@@ -12,6 +12,7 @@ interface AuthContextType {
   logout: () => void;
   switchRoleDemo: (role: UserRole) => void;
   updateUserPhoto: (photoUrl: string | null) => void;
+  setSessionUser: (loggedUser: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +53,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     authService.logout();
     setUser(null);
+  };
+
+  const setSessionUser = (loggedUser: User) => {
+    localStorage.setItem('nexo_current_user', JSON.stringify(loggedUser));
+    setUser(loggedUser);
   };
 
   const switchRoleDemo = (targetRole: UserRole) => {
@@ -146,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         switchRoleDemo,
         updateUserPhoto,
+        setSessionUser,
       }}
     >
       {children}

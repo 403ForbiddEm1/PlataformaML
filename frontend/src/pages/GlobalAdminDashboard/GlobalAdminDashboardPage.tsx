@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Application, ComparisonMetrics, Empresa, MLModelMetrics, User, Vacancy } from '@/types';
 import { reportsService } from '@/services/reports.service';
 import { mlService } from '@/services/ml.service';
@@ -7,11 +7,12 @@ import { empresaService } from '@/services/empresa.service';
 import { applicationsService } from '@/services/applications.service';
 import { vacanciesService } from '@/services/vacancies.service';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/Button';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { AppShell } from '@/components/layout/AppShell';
+import { type SidebarSection } from '@/components/layout/Sidebar';
+import { SuperadminTicketsPanel } from '@/components/support/SuperadminTicketsPanel';
+import { supportService } from '@/services/support.service';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
@@ -44,11 +45,11 @@ import {
   Trash2,
   AlertTriangle,
   LogOut,
+  LifeBuoy,
 } from 'lucide-react';
 
 export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   const { user, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -61,14 +62,19 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
     return null;
   }
 
-  const [activeTab, setActiveTab] = useState<'mlops' | 'companies' | 'directory'>('mlops');
-  const [isPageSliding, setIsPageSliding] = useState(false);
-  const slideTimeoutRef = useRef<number | null>(null);
-  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
-  const mlopsTabRef = useRef<HTMLButtonElement | null>(null);
-  const companiesTabRef = useRef<HTMLButtonElement | null>(null);
-  const directoryTabRef = useRef<HTMLButtonElement | null>(null);
-  const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 4, width: 0 });
+  const [activeTab, setActiveTab] = useState<'mlops' | 'companies' | 'directory' | 'tickets'>('mlops');
+  const [openTicketsCount, setOpenTicketsCount] = useState<number>(0);
+
+  useEffect(() => {
+    const refreshTicketCount = () => {
+      supportService.getTickets().then((list) => {
+        setOpenTicketsCount(list.filter((t) => t.estado !== 'Resuelto').length);
+      });
+    };
+    refreshTicketCount();
+    window.addEventListener('support-tickets-updated', refreshTicketCount);
+    return () => window.removeEventListener('support-tickets-updated', refreshTicketCount);
+  }, []);
   const [metrics, setMetrics] = useState<ComparisonMetrics | null>(null);
   const [mlInfo, setMlInfo] = useState<MLModelMetrics | null>(null);
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -274,44 +280,9 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
     }));
   };
 
-  const handleSwitchTab = (nextTab: 'mlops' | 'companies' | 'directory') => {
-    if (nextTab === activeTab) return;
-    setIsPageSliding(true);
+  const handleSwitchTab = (nextTab: 'mlops' | 'companies' | 'directory' | 'tickets') => {
     setActiveTab(nextTab);
-    if (slideTimeoutRef.current) {
-      window.clearTimeout(slideTimeoutRef.current);
-    }
-    slideTimeoutRef.current = window.setTimeout(() => {
-      setIsPageSliding(false);
-    }, 520);
   };
-
-  useLayoutEffect(() => {
-    const updatePill = () => {
-      const activeEl =
-        activeTab === 'mlops'
-          ? mlopsTabRef.current
-          : activeTab === 'companies'
-          ? companiesTabRef.current
-          : directoryTabRef.current;
-      if (!activeEl) return;
-      setTabPillStyle({
-        left: activeEl.offsetLeft,
-        width: activeEl.offsetWidth,
-      });
-    };
-    updatePill();
-    window.addEventListener('resize', updatePill);
-    return () => window.removeEventListener('resize', updatePill);
-  }, [activeTab, companiesList.length, usersList.length]);
-
-  useEffect(() => {
-    return () => {
-      if (slideTimeoutRef.current) {
-        window.clearTimeout(slideTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const handleConfirmDeleteUser = async () => {
     if (!userToDelete) return;
@@ -533,145 +504,60 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
+  const sidebarSections: SidebarSection[] = [
+    {
+      title: 'GOBERNANZA GLOBAL',
+      items: [
+        { id: 'mlops', label: 'MLOps & Motor IA', icon: Brain },
+        { id: 'companies', label: 'Empresas afiliadas', icon: Building2, badge: companiesList.length },
+        { id: 'directory', label: 'Usuarios registrados', icon: Users, badge: usersList.length },
+        { id: 'tickets', label: 'Tickets de Soporte', icon: LifeBuoy, badge: openTicketsCount || undefined },
+      ],
+    },
+    {
+      title: 'PORTAL',
+      items: [
+        { id: 'external-vacancies', label: 'Portal público', icon: ExternalLink, external: true },
+      ],
+    },
+  ];
+
+  const activeTitle =
+    activeTab === 'mlops'
+      ? 'MLOps & Entrenamiento de IA'
+      : activeTab === 'companies'
+      ? 'Directorio de Empresas'
+      : activeTab === 'directory'
+      ? 'Usuarios Registrados'
+      : 'Tickets de Soporte & Quejas';
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
-      {/* Top Header - Glassmorphic Modern Aesthetic with Shared Borders */}
-      <header className="w-full bg-[#090A0C]/85 backdrop-blur-xl text-[#F1F2EC] border-b border-[#F1F2EC]/10 sticky top-0 z-30 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-        <div className="w-full px-4 sm:px-6 lg:px-10 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <BrandLogo className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl p-1.5" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-[#F1F2EC] text-base sm:text-xl tracking-tight font-['Instrument_Sans',sans-serif] truncate">
-                  Administrador Global · PlataformaML
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#C8FF45]/15 text-[#C8FF45] border border-[#C8FF45]/35 text-[10px] font-black uppercase tracking-wider shrink-0">
-                  Superadmin Global
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-[#777873] font-medium truncate">
-                Supervisión multi-empresa, herramientas MLOps de entrenamiento y gobernanza de IA
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-            <ThemeToggle />
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onNavigate('vacancies')}
-              className="text-xs bg-slate-800 hover:bg-slate-700 border-slate-600 text-[#F1F2EC] shadow-[0_3px_0_#020617]"
-            >
-              <span className="sm:hidden">Portal</span>
-              <span className="hidden sm:inline">Portal Público ➔</span>
-            </Button>
-
-            {/* Logout en esquina derecha del nav top (Rojo conservado) */}
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                onNavigate('login');
-              }}
-              className="p-2 rounded-xl text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 shadow-[0_3px_0_#881337] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="w-4 h-4 text-white" />
-              <span className="hidden sm:inline">Cerrar sesión</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Navigation with Sliding Pill Indicator */}
-        <div className="w-full px-4 sm:px-6 lg:px-10 py-2 border-t border-[#F1F2EC]/10 bg-[#090A0C]/75 backdrop-blur-md overflow-x-auto">
-          <div
-            ref={tabsContainerRef}
-            className="relative inline-flex items-center gap-1.5 p-1 rounded-xl bg-[#F1F2EC]/6 border border-[#F1F2EC]/10 backdrop-blur-md"
-          >
-            {tabPillStyle.width > 0 && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg bg-[#C8FF45] border border-[#84cc16] shadow-[0_3px_0_#3f6212] transition-[transform,width] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform z-0"
-                style={{
-                  width: `${tabPillStyle.width}px`,
-                  transform: `translate3d(${tabPillStyle.left}px, 0, 0)`,
-                }}
-              />
-            )}
-
-            <button
-              ref={mlopsTabRef}
-              type="button"
-              onClick={() => handleSwitchTab('mlops')}
-              className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                activeTab === 'mlops'
-                  ? 'text-[#090A0C]'
-                  : 'text-[#777873] hover:text-[#F1F2EC]'
-              }`}
-            >
-              <Brain className="w-4 h-4 shrink-0" />
-              <span>MLOps & Entrenamiento de IA</span>
-            </button>
-
-            <button
-              ref={companiesTabRef}
-              type="button"
-              onClick={() => handleSwitchTab('companies')}
-              className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                activeTab === 'companies'
-                  ? 'text-[#090A0C]'
-                  : 'text-[#777873] hover:text-[#F1F2EC]'
-              }`}
-            >
-              <Building2 className="w-4 h-4 shrink-0" />
-              <span>Directorio de Empresas ({companiesList.length})</span>
-            </button>
-
-            <button
-              ref={directoryTabRef}
-              type="button"
-              onClick={() => handleSwitchTab('directory')}
-              className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                activeTab === 'directory'
-                  ? 'text-[#090A0C]'
-                  : 'text-[#777873] hover:text-[#F1F2EC]'
-              }`}
-            >
-              <Users className="w-4 h-4 shrink-0" />
-              <span>Usuarios Registrados ({usersList.length})</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content: Bidirectional Horizontal Page Slide Carousel (Navbar stays fixed above) */}
-      <main className="w-full overflow-x-hidden flex-1 bg-transparent">
-        <div
-          className="flex w-[300%] items-start transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
-          style={{
-            transform:
-              activeTab === 'mlops'
-                ? 'translate3d(0%, 0, 0)'
-                : activeTab === 'companies'
-                ? 'translate3d(-33.333333%, 0, 0)'
-                : 'translate3d(-66.666667%, 0, 0)',
-          }}
-        >
-          {/* TAB 1 (LEFT): MLOPS & MOTOR DE IA GLOBAL */}
-          <div
-            className={`w-1/3 shrink-0 transition-opacity duration-300 ${
-              activeTab === 'mlops'
-                ? 'opacity-100'
-                : isPageSliding
-                ? 'opacity-90 pointer-events-none'
-                : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={activeTab !== 'mlops'}
-          >
-          <div className="w-full flex-1 flex flex-col divide-y divide-slate-200/50 dark:divide-white/10">
+      <AppShell
+        sections={sidebarSections}
+        activeId={activeTab}
+        onSelect={(id) => {
+          if (id === 'external-vacancies') {
+            onNavigate('vacancies');
+            return;
+          }
+          handleSwitchTab(id as typeof activeTab);
+        }}
+        brandSubtitle="SUPERADMIN GLOBAL"
+        crumbRoot="Administrador Global"
+        title={activeTitle}
+        roleLabel="Superadmin"
+        onSupportClick={() => handleSwitchTab('tickets')}
+        onLogout={() => {
+          logout();
+          onNavigate('login');
+        }}
+        onBrandClick={() => onNavigate('vacancies')}
+      >
+        <div className="w-full flex-1">
+          {/* TAB 1: MLOPS & MOTOR DE IA GLOBAL */}
+          {activeTab === 'mlops' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col divide-y divide-slate-200/50 dark:divide-white/10">
             {/* Impact Metrics Banner */}
             <section className="w-full p-6 sm:p-10 bg-white/15 dark:bg-transparent backdrop-blur-[2px] text-slate-900 dark:text-white space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/60 dark:border-white/10">
@@ -942,21 +828,12 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                 </div>
               </TiltGlassCard>
             </section>
-          </div>
-          </div>
+            </div>
+          )}
 
-          {/* TAB 2 (CENTER): DIRECTORIO DE TODAS LAS EMPRESAS (MULTI-EMPRESA) */}
-          <div
-            className={`w-1/3 shrink-0 transition-opacity duration-300 ${
-              activeTab === 'companies'
-                ? 'opacity-100'
-                : isPageSliding
-                ? 'opacity-90 pointer-events-none'
-                : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={activeTab !== 'companies'}
-          >
-          <div className="w-full flex-1 flex flex-col divide-y-2 divide-[#c8b193] dark:divide-[#4d3c2e]">
+          {/* TAB 2: DIRECTORIO DE TODAS LAS EMPRESAS (MULTI-EMPRESA) */}
+          {activeTab === 'companies' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col divide-y-2 divide-[#c8b193] dark:divide-[#4d3c2e]">
             {/* Header de Empresas y Botón Registrar */}
             <div className="w-full p-6 sm:p-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#faf7f2]/70 dark:bg-slate-900">
               <div>
@@ -1125,21 +1002,12 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                 </div>
               )}
             </div>
-          </div>
-          </div>
+            </div>
+          )}
 
-          {/* TAB 3 (RIGHT): USUARIOS REGISTRADOS */}
-          <div
-            className={`w-1/3 shrink-0 transition-opacity duration-300 ${
-              activeTab === 'directory'
-                ? 'opacity-100'
-                : isPageSliding
-                ? 'opacity-90 pointer-events-none'
-                : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={activeTab !== 'directory'}
-          >
-          <div className="w-full flex-1 flex flex-col divide-y-2 divide-[#c8b193] dark:divide-[#4d3c2e]">
+          {/* TAB 3: USUARIOS REGISTRADOS */}
+          {activeTab === 'directory' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col divide-y-2 divide-[#c8b193] dark:divide-[#4d3c2e]">
             {/* Header and Search Filters */}
             <div className="w-full p-6 sm:p-10 space-y-4 bg-[#faf7f2]/70 dark:bg-slate-900">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1502,10 +1370,17 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                 </tbody>
               </table>
             </div>
-          </div>
-          </div>
+            </div>
+          )}
+
+          {/* TAB 4: TICKETS DE SOPORTE & QUEJAS */}
+          {activeTab === 'tickets' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col">
+              <SuperadminTicketsPanel />
+            </div>
+          )}
         </div>
-      </main>
+      </AppShell>
 
       {/* MODAL 1: REGISTRAR NUEVA EMPRESA (LUGAR 2 DE REGISTRO) */}
       <Modal

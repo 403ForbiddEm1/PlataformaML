@@ -35,8 +35,8 @@ export const notificationsController = {
       const items: NotificationItemResponse[] = notificaciones.map((n) => ({
         id: n.id,
         recipient: n.destinatario,
-        channel: n.canal === CanalNotificacion.WHATSAPP ? 'WhatsApp' : 'Email',
-        title: n.asunto || (n.canal === CanalNotificacion.WHATSAPP ? 'Mensaje WhatsApp' : 'Notificación'),
+        channel: n.canal === CanalNotificacion.WHATSAPP ? 'Telegram' : 'Email',
+        title: n.asunto || (n.canal === CanalNotificacion.WHATSAPP ? 'Mensaje de Telegram' : 'Notificación'),
         message: n.mensaje,
         timestamp: n.creadoEn.toLocaleString('es-DO', {
           day: '2-digit',

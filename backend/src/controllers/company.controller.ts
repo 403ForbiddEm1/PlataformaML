@@ -25,8 +25,10 @@ const invitarSchema = z
   .object({
     correo: z.string().email().max(254),
     rol: z.enum(['RRHH', 'ADMIN']).default('RRHH'),
-  })
-  .strict();
+    nombre: z.string().max(120).optional(),
+    telefono: z.string().max(30).optional(),
+    password: z.string().max(120).optional(),
+  });
 
 const estadoMiembroSchema = z.object({ activo: z.boolean() }).strict();
 

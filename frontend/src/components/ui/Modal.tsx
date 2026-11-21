@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Folder } from 'lucide-react';
 
 interface ModalProps {
@@ -47,8 +48,8 @@ export const Modal: React.FC<ModalProps> = ({
 
   const isManila = variant === 'manila';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 overflow-y-auto">
+  const modalNode = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2.5 sm:p-6 overflow-y-auto">
       {/* Frosted Glass Backdrop */}
       <div
         className="fixed inset-0 bg-[#090A0C]/75 backdrop-blur-md modal-animate-backdrop"
@@ -98,4 +99,6 @@ export const Modal: React.FC<ModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
 };

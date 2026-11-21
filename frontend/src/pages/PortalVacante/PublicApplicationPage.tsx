@@ -299,7 +299,7 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
 
                   <form onSubmit={handleSubmit} className="space-y-3">
                     <Input
-                      label="Teléfono de contacto / WhatsApp *"
+                      label="Teléfono de contacto / Telegram *"
                       type="tel"
                       placeholder="+1 (809) 000-0000"
                       value={phone}

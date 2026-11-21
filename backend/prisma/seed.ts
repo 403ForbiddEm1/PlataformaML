@@ -145,7 +145,7 @@ async function main() {
   });
 
   // 5. Personal de RRHH
-  await prisma.usuario.upsert({
+  const rrhh = await prisma.usuario.upsert({
     where: { correo: 'rrhh@technova.test' },
     update: {},
     create: {
@@ -325,6 +325,43 @@ async function main() {
         entidadId: postulacion.id,
         detalle: { vacante: vacante.titulo },
       },
+    });
+  }
+
+  // 10. Conversación de chat Web <-> Telegram para la postulación demo
+  const conversacion = await prisma.conversacion.upsert({
+    where: { postulacionId: postulacion.id },
+    update: {},
+    create: {
+      postulacionId: postulacion.id,
+      empresaId: empresa.id,
+      candidatoId: candidato.id,
+      ultimoMensajeEn: ahora,
+    },
+  });
+
+  const mensajesExistentes = await prisma.mensaje.count({
+    where: { conversacionId: conversacion.id },
+  });
+  if (mensajesExistentes === 0) {
+    await prisma.mensaje.createMany({
+      data: [
+        {
+          conversacionId: conversacion.id,
+          autorId: rrhh.id,
+          contenido:
+            '¡Hola María! Hemos recibido tu postulación para Desarrollador Backend en TechNova C.A. Tu perfil obtuvo 94% de afinidad en nuestro modelo de evaluación.',
+          creadoEn: new Date(ahora.getTime() - 1000 * 60 * 15),
+          leidoEn: new Date(ahora.getTime() - 1000 * 60 * 10),
+        },
+        {
+          conversacionId: conversacion.id,
+          autorId: candidato.id,
+          contenido:
+            '¡Muchas gracias Carlos! Quedo atenta a los siguientes pasos para la entrevista técnica.',
+          creadoEn: new Date(ahora.getTime() - 1000 * 60 * 8),
+        },
+      ],
     });
   }
 

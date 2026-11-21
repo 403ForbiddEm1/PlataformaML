@@ -135,12 +135,46 @@ export async function parseAndAnalyzeCV(
 
   const bio = `Profesional en ${title} con sólida formación en ingeniería y pasión por el desarrollo de aplicaciones web de alto rendimiento. Especializado en ecosistemas JavaScript/TypeScript, diseño de interfaces responsivas y consumo de modelos de Inteligencia Artificial.`;
 
+  // Detección de Ubicación dentro del texto del CV
+  let detectedLocation = '';
+  const explicitLocMatch = rawText.match(
+    /(?:ubicaci[oó]n|direcci[oó]n|ciudad|residencia|domicilio|location)\s*[:\-]\s*([^\r\n•|]{3,65})/i,
+  );
+  if (explicitLocMatch && explicitLocMatch[1]) {
+    detectedLocation = explicitLocMatch[1].trim();
+  } else {
+    const knownLocations: Array<{ regex: RegExp; label: string }> = [
+      { regex: /maracaibo/i, label: 'Maracaibo, Zulia, Venezuela' },
+      { regex: /caracas/i, label: 'Caracas, Venezuela' },
+      { regex: /valencia[,\s]+(?:carabobo|venezuela)/i, label: 'Valencia, Carabobo, Venezuela' },
+      { regex: /barquisimeto/i, label: 'Barquisimeto, Lara, Venezuela' },
+      { regex: /m[eé]rida[,\s]+venezuela/i, label: 'Mérida, Venezuela' },
+      { regex: /san crist[oó]bal/i, label: 'San Cristóbal, Táchira, Venezuela' },
+      { regex: /puerto ordaz|ciudad guayana/i, label: 'Puerto Ordaz, Bolívar, Venezuela' },
+      { regex: /barcelona|lecher[ií]a|puerto la cruz/i, label: 'Anzoátegui, Venezuela' },
+      { regex: /maracay/i, label: 'Maracay, Aragua, Venezuela' },
+      { regex: /santo domingo/i, label: 'Santo Domingo, República Dominicana' },
+      { regex: /bogot[aá]/i, label: 'Bogotá, Colombia' },
+      { regex: /medell[ií]n/i, label: 'Medellín, Colombia' },
+      { regex: /ciudad de m[eé]xico|cdmx/i, label: 'Ciudad de México, México' },
+      { regex: /buenos aires/i, label: 'Buenos Aires, Argentina' },
+      { regex: /madrid/i, label: 'Madrid, España' },
+      { regex: /venezuela/i, label: 'Venezuela' },
+    ];
+    for (const loc of knownLocations) {
+      if (loc.regex.test(rawText)) {
+        detectedLocation = loc.label;
+        break;
+      }
+    }
+  }
+
   return {
     title,
     bio,
     skills: finalSkills,
     education,
     experience,
-    location: 'Santo Domingo, República Dominicana',
+    location: detectedLocation,
   };
 }

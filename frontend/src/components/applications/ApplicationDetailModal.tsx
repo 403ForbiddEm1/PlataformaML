@@ -55,7 +55,7 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
       );
       showToast(
         `Estado actualizado a "${newStatus}"`,
-        `Se envió notificación automática por WhatsApp/Email al candidato.`,
+        `Se envió notificación automática por Telegram/Email al candidato.`,
         'success'
       );
       setNoteText('');

@@ -16,8 +16,13 @@ export const notificationsService = {
       await new Promise((r) => setTimeout(r, 150));
       return mockStore.getNotifications();
     }
-    const response = await api.get<NotificationItem[]>('/notifications');
-    return response.data;
+    try {
+      const response = await api.get<any>('/notifications');
+      const list = (response.data as any)?.data ?? response.data;
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
   },
 
   async sendNotification(payload: SendNotificationPayload): Promise<NotificationItem> {
@@ -48,4 +53,48 @@ export const notificationsService = {
     const response = await api.post<NotificationItem>('/notifications/send', payload);
     return response.data;
   },
+
+  /** Plantillas activas visibles para la empresa (propias + predeterminadas de la plataforma) */
+  async getTemplates(): Promise<NotificationTemplateDto[]> {
+    const response = await api.get<NotificationTemplateDto[]>('/company/notification-templates');
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async saveTemplate(data: {
+    evento: TemplateEvent;
+    canal: TemplateChannel;
+    asunto?: string | null;
+    cuerpo: string;
+  }): Promise<NotificationTemplateDto> {
+    const response = await api.put<NotificationTemplateDto>('/company/notification-templates', data);
+    return response.data;
+  },
+
+  async restoreTemplate(evento: TemplateEvent, canal: TemplateChannel): Promise<void> {
+    await api.delete(`/company/notification-templates/${evento}/${canal}`);
+  },
 };
+
+export type TemplateEvent =
+  | 'POSTULACION_RECIBIDA'
+  | 'EN_REVISION'
+  | 'PRESELECCIONADA'
+  | 'ENTREVISTA_1'
+  | 'ENTREVISTA_2'
+  | 'CONTRATADA'
+  | 'RECHAZADA'
+  | 'MENSAJE_NUEVO';
+
+/** CORREO = correo electrónico · WHATSAPP = canal de mensajería instantánea (Telegram) */
+export type TemplateChannel = 'CORREO' | 'WHATSAPP' | 'APP';
+
+export interface NotificationTemplateDto {
+  id: string;
+  empresaId: string | null;
+  evento: TemplateEvent;
+  canal: TemplateChannel;
+  asunto: string | null;
+  cuerpo: string;
+  version: number;
+  activa: boolean;
+}

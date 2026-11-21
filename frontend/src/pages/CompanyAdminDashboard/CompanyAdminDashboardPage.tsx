@@ -1,7 +1,6 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Application, Employee, Empresa, User, Vacancy } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { authService } from '@/services/auth.service';
 import { vacanciesService } from '@/services/vacancies.service';
@@ -9,8 +8,12 @@ import { applicationsService } from '@/services/applications.service';
 import { empresaService } from '@/services/empresa.service';
 import { employeesService } from '@/services/employees.service';
 import { Button } from '@/components/ui/Button';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { AppShell } from '@/components/layout/AppShell';
+import { type SidebarSection } from '@/components/layout/Sidebar';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { EmailTemplatesEditor } from '@/components/company/EmailTemplatesEditor';
+import { TelegramLinkCard } from '@/components/company/TelegramLinkCard';
+import { CandidateProfileDrawer } from '@/components/candidates/CandidateProfileDrawer';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
@@ -41,29 +44,21 @@ import {
   Sparkles,
   Trash2,
   AlertTriangle,
-  LogOut,
   FileUser,
   Megaphone,
   Crown,
-  Menu,
-  X,
+  MessageSquare,
+  ExternalLink,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   const { user, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'metrics' | 'team' | 'candidates' | 'profile'>('metrics');
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isPageSliding, setIsPageSliding] = useState(false);
-  const slideTimeoutRef = useRef<number | null>(null);
-  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
-  const metricsTabRef = useRef<HTMLButtonElement | null>(null);
-  const teamTabRef = useRef<HTMLButtonElement | null>(null);
-  const candidatesTabRef = useRef<HTMLButtonElement | null>(null);
-  const profileTabRef = useRef<HTMLButtonElement | null>(null);
-  const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
+  const [activeTab, setActiveTab] = useState<'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile'>('metrics');
+  const [profileDrawerApp, setProfileDrawerApp] = useState<Application | null>(null);
 
   // Local data filtered for this specific company (Tenant Isolation)
   const currentEmpresaId = user?.empresaId || user?.companyId || '';
@@ -94,55 +89,64 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
   } | null>(null);
   const [isDeletingEmployee, setIsDeletingEmployee] = useState(false);
 
-  // Company Profile Edit State
+  // Company Profile Edit State + Cover (Portada Horizontal) & Square Logo (4x4)
   const [editNombre, setEditNombre] = useState('');
   const [editRif, setEditRif] = useState('');
   const [editDominio, setEditDominio] = useState('');
   const [editTelefono, setEditTelefono] = useState('');
   const [editDescripcion, setEditDescripcion] = useState('');
+  const [companyCoverUrl, setCompanyCoverUrl] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`nexo_company_cover_${currentEmpresaId || currentEmpresaNombre}`) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`nexo_company_logo_${currentEmpresaId || currentEmpresaNombre}`) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setCompanyCoverUrl(dataUrl);
+      try {
+        localStorage.setItem(`nexo_company_cover_${currentEmpresaId || currentEmpresaNombre}`, dataUrl);
+      } catch {}
+      showToast('Portada actualizada', 'La imagen horizontal de portada de la empresa se guardó correctamente.', 'success');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setCompanyLogoUrl(dataUrl);
+      try {
+        localStorage.setItem(`nexo_company_logo_${currentEmpresaId || currentEmpresaNombre}`, dataUrl);
+      } catch {}
+      showToast('Logo actualizado', 'El logo 4x4 de la empresa fue guardado con éxito.', 'success');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Candidates Search & Filter
   const [candidateSearch, setCandidateSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
 
-  const handleSwitchTab = (nextTab: 'metrics' | 'team' | 'candidates' | 'profile') => {
-    if (nextTab === activeTab) return;
-    setIsPageSliding(true);
+  const handleSwitchTab = (nextTab: 'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile') => {
     setActiveTab(nextTab);
-    if (slideTimeoutRef.current) {
-      window.clearTimeout(slideTimeoutRef.current);
-    }
-    slideTimeoutRef.current = window.setTimeout(() => {
-      setIsPageSliding(false);
-    }, 520);
   };
-
-  useLayoutEffect(() => {
-    const updatePill = () => {
-      const activeEl =
-        activeTab === 'metrics'
-          ? metricsTabRef.current
-          : activeTab === 'team'
-          ? teamTabRef.current
-          : activeTab === 'candidates'
-          ? candidatesTabRef.current
-          : profileTabRef.current;
-      if (!activeEl) return;
-      setTabPillStyle({
-        left: activeEl.offsetLeft,
-        width: activeEl.offsetWidth,
-      });
-    };
-    updatePill();
-    window.addEventListener('resize', updatePill);
-    return () => window.removeEventListener('resize', updatePill);
-  }, [activeTab, teamMembers.length, hiredEmployees.length, companyApplications.length]);
-
-  useEffect(() => {
-    return () => {
-      if (slideTimeoutRef.current) window.clearTimeout(slideTimeoutRef.current);
-    };
-  }, []);
 
   const loadCompanyData = async () => {
     setIsLoading(true);
@@ -225,30 +229,26 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
 
   const handleRegisterHR = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hrName || !hrEmail || !hrPassword) {
-      showToast('Campos requeridos', 'Por favor ingresa nombre, correo y contraseña para el nuevo reclutador.', 'error');
-      return;
-    }
-    if (hrPassword.length < 8 || !/[A-Za-z]/.test(hrPassword) || !/[0-9]/.test(hrPassword)) {
-      showToast('Contraseña débil', 'La contraseña debe tener al menos 8 caracteres, incluyendo letras y números.', 'error');
+    if (!hrName.trim() || !hrEmail.trim()) {
+      showToast('Campos requeridos', 'Ingresa el nombre y el correo electrónico del reclutador de RRHH.', 'error');
       return;
     }
     setIsRegisteringHR(true);
     try {
       const newMember = await authService.registerHRUser({
-        name: hrName,
-        email: hrEmail,
-        password: hrPassword,
-        phone: hrPhone || '+1 (809) 555-0200',
+        name: hrName.trim(),
+        email: hrEmail.trim(),
+        password: hrPassword.trim() || 'Password123!',
+        phone: hrPhone.trim() || undefined,
         empresaId: currentEmpresaId,
         empresaNombre: currentEmpresaNombre,
       });
 
       setTeamMembers((prev) => [newMember, ...prev]);
       showToast(
-        'Miembro de RRHH Registrado',
-        `Se ha creado el acceso de RRHH para ${hrName} (${hrEmail}) con sus credenciales asignadas.`,
-        'success'
+        'Invitación de RRHH enviada por correo',
+        `Se envió un correo de confirmación a ${hrEmail}. El reclutador debe confirmar su registro desde ese enlace. Las notificaciones y mensajes saldrán del correo y Telegram de la empresa.`,
+        'success',
       );
       setIsNewHROpen(false);
       setHrName('');
@@ -257,7 +257,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
       setHrPassword('');
       await loadCompanyData();
     } catch (err: any) {
-      showToast('Error', err?.message || 'No se pudo registrar al reclutador.', 'error');
+      showToast('Error', err?.message || 'No se pudo enviar la invitación al reclutador.', 'error');
     } finally {
       setIsRegisteringHR(false);
     }
@@ -345,229 +345,71 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
     return matchesSearch && matchesVacancy;
   });
 
+  const sidebarSections: SidebarSection[] = [
+    {
+      title: 'GESTIÓN DE EMPRESA',
+      items: [
+        { id: 'metrics', label: 'Métricas Locales', icon: BarChart3 },
+        { id: 'team', label: 'Equipo de Trabajo', icon: Users, badge: teamMembers.length + hiredEmployees.length },
+        { id: 'candidates', label: 'Candidatos', icon: UserCheck, badge: companyApplications.length },
+        { id: 'messages', label: 'Mensajes y Telegram', icon: MessageSquare },
+      ],
+    },
+    {
+      title: 'CONFIGURACIÓN',
+      items: [
+        { id: 'templates', label: 'Plantillas de Avisos', icon: Mail },
+        { id: 'profile', label: 'Empresa y Telegram', icon: Building2 },
+      ],
+    },
+    {
+      title: 'PORTAL',
+      items: [
+        { id: 'external-vacancies', label: 'Catálogo de Vacantes', icon: ExternalLink, external: true },
+      ],
+    },
+  ];
+
+  const activeTitle =
+    activeTab === 'metrics'
+      ? 'Métricas Locales'
+      : activeTab === 'team'
+      ? 'Equipo de Trabajo'
+      : activeTab === 'candidates'
+      ? 'Candidatos de la Empresa'
+      : activeTab === 'messages'
+      ? 'Mensajes con Candidatos'
+      : activeTab === 'templates'
+      ? 'Plantillas de Notificación'
+      : 'Datos y Telegram de Empresa';
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
-      {/* Top Header - Glassmorphic Modern Aesthetic */}
-      <header className="w-full bg-[#090A0C]/85 backdrop-blur-md text-[#F1F2EC] border-b border-[#F1F2EC]/10 sticky top-0 z-30 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-        <div className="w-full px-4 sm:px-6 lg:px-10 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <BrandLogo className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl p-1.5" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-[#F1F2EC] text-base sm:text-xl tracking-tight font-['Instrument_Sans',sans-serif] truncate">
-                  Panel Corporativo · {currentEmpresaNombre}
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#C8FF45]/15 text-[#C8FF45] border border-[#C8FF45]/35 text-[10px] font-black uppercase tracking-wider shrink-0">
-                  Admin Local
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-[#777873] font-medium truncate">
-                RIF: {empresaData?.rif || 'J-12345678-9'} · Dominio: {empresaData?.dominio || 'empresa.com'} · Portal Empresa
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-            <ThemeToggle />
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onNavigate('vacancies')}
-              className="text-xs bg-slate-800 hover:bg-slate-700 border-slate-600 text-[#F1F2EC] shadow-[0_3px_0_#020617]"
-            >
-              <span className="sm:hidden">Vacantes</span>
-              <span className="hidden sm:inline">Catálogo de Vacantes</span>
-            </Button>
-
-            {/* Logout en esquina derecha del nav top (Rojo conservado) */}
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                onNavigate('login');
-              }}
-              className="p-2 rounded-xl text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 shadow-[0_3px_0_#881337] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="w-4 h-4 text-white" />
-              <span className="hidden sm:inline">Cerrar sesión</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Navigation: hamburguesa en móvil, píldora deslizante en desktop */}
-        <div className="w-full px-4 sm:px-6 lg:px-10 py-2 border-t border-[#F1F2EC]/10 bg-[#090A0C]/75">
-          {/* Versión Móvil (< md): barra compacta con botón hamburguesa */}
-          <div className="md:hidden flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setIsMobileNavOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[#F1F2EC] hover:text-[#C8FF45] shadow-[0_3px_0_#020617] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer text-xs font-bold"
-                aria-expanded={isMobileNavOpen}
-                aria-label="Abrir menú de subpáginas"
-              >
-                {isMobileNavOpen ? <X className="w-4 h-4 text-[#C8FF45]" /> : <Menu className="w-4 h-4 text-[#C8FF45]" />}
-                <span>Menú</span>
-              </button>
-
-              <span className="text-[11px] font-black uppercase tracking-wider text-[#C8FF45] truncate">
-                {activeTab === 'metrics'
-                  ? 'Métricas Locales'
-                  : activeTab === 'team'
-                  ? `Equipo de Trabajo (${teamMembers.length + hiredEmployees.length})`
-                  : activeTab === 'candidates'
-                  ? `Candidatos (${companyApplications.length})`
-                  : 'Datos de la Empresa'}
-              </span>
-            </div>
-
-            {isMobileNavOpen && (
-              <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-[#090A0C]/95 border border-[#F1F2EC]/12 shadow-xl">
-                {[
-                  { id: 'metrics' as const, label: 'Métricas Locales', Icon: BarChart3 },
-                  {
-                    id: 'team' as const,
-                    label: `Equipo de Trabajo (${teamMembers.length + hiredEmployees.length})`,
-                    Icon: Users,
-                  },
-                  {
-                    id: 'candidates' as const,
-                    label: `Candidatos de la Empresa (${companyApplications.length})`,
-                    Icon: UserCheck,
-                  },
-                  { id: 'profile' as const, label: 'Datos de la Empresa', Icon: Edit3 },
-                ].map(({ id, label, Icon }) => {
-                  const isActive = activeTab === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => {
-                        handleSwitchTab(id);
-                        setIsMobileNavOpen(false);
-                      }}
-                      className={`w-full px-3 py-2.5 rounded-lg flex items-center gap-2.5 text-left uppercase tracking-wider text-[11px] font-bold transition-colors cursor-pointer ${
-                        isActive
-                          ? 'bg-[#C8FF45] text-[#090A0C] border border-[#84cc16]'
-                          : 'text-[#F1F2EC]/80 hover:bg-white/10 hover:text-[#F1F2EC]'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Versión Desktop (md+): barra de pestañas con píldora deslizante */}
-          <div className="hidden md:block overflow-x-auto">
-            <div
-              ref={tabsContainerRef}
-              className="relative inline-flex items-center gap-1.5 p-1 rounded-xl bg-[#F1F2EC]/6 border border-[#F1F2EC]/10"
-            >
-              {tabPillStyle.width > 0 && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg bg-[#C8FF45] border border-[#84cc16] shadow-[0_3px_0_#3f6212] transition-[transform,width] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform z-0"
-                  style={{
-                    width: `${tabPillStyle.width}px`,
-                    transform: `translate3d(${tabPillStyle.left}px, 0, 0)`,
-                  }}
-                />
-              )}
-
-              <button
-                ref={metricsTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('metrics')}
-                className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                  activeTab === 'metrics'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <BarChart3 className="w-4 h-4 shrink-0" />
-                <span>Métricas Locales</span>
-              </button>
-
-              <button
-                ref={teamTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('team')}
-                className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                  activeTab === 'team'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <Users className="w-4 h-4 shrink-0" />
-                <span>Equipo de Trabajo ({teamMembers.length + hiredEmployees.length})</span>
-              </button>
-
-              <button
-                ref={candidatesTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('candidates')}
-                className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                  activeTab === 'candidates'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <UserCheck className="w-4 h-4 shrink-0" />
-                <span>Candidatos de la Empresa ({companyApplications.length})</span>
-              </button>
-
-              <button
-                ref={profileTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('profile')}
-                className={`relative z-10 px-3.5 py-2 rounded-lg transition-colors duration-250 flex items-center gap-2 cursor-pointer uppercase tracking-wider text-[11px] font-bold whitespace-nowrap shrink-0 ${
-                  activeTab === 'profile'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <Edit3 className="w-4 h-4 shrink-0" />
-                <span>Datos de la Empresa</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content: Carrusel horizontal bidireccional entre subpáginas sobre partículas */}
-      <main className="w-full overflow-x-hidden flex-1 bg-transparent">
-        <div
-          className="flex w-[400%] items-start transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
-          style={{
-            transform:
-              activeTab === 'metrics'
-                ? 'translate3d(0%, 0, 0)'
-                : activeTab === 'team'
-                ? 'translate3d(-25%, 0, 0)'
-                : activeTab === 'candidates'
-                ? 'translate3d(-50%, 0, 0)'
-                : 'translate3d(-75%, 0, 0)',
-          }}
-        >
-        {/* TAB 1: MÉTRICAS LOCALES Y RENDIMIENTO DE LA EMPRESA */}
-        <div
-          className={`w-1/4 shrink-0 transition-opacity duration-300 ${
-            activeTab === 'metrics'
-              ? 'opacity-100'
-              : isPageSliding
-              ? 'opacity-90 pointer-events-none'
-              : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-          }`}
-          aria-hidden={activeTab !== 'metrics'}
-        >
-          <div className="w-full flex-1 flex flex-col gap-4 sm:gap-5 px-4 py-4 sm:px-8 sm:py-5 bg-transparent">
+      <AppShell
+        sections={sidebarSections}
+        activeId={activeTab}
+        onSelect={(id) => {
+          if (id === 'external-vacancies') {
+            onNavigate('vacancies');
+            return;
+          }
+          handleSwitchTab(id as typeof activeTab);
+        }}
+        brandSubtitle="ADMIN CORPORATIVO"
+        crumbRoot={currentEmpresaNombre}
+        title={activeTitle}
+        roleLabel="Admin Local"
+        contextLabel={`RIF ${empresaData?.rif || 'J-12345678-9'}`}
+        onLogout={() => {
+          logout();
+          onNavigate('login');
+        }}
+        onBrandClick={() => onNavigate('vacancies')}
+      >
+        <div className="w-full flex-1">
+          {/* TAB 1: MÉTRICAS LOCALES Y RENDIMIENTO DE LA EMPRESA */}
+          {activeTab === 'metrics' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col gap-4 sm:gap-5 px-4 py-4 sm:px-8 sm:py-5 bg-transparent">
             {/* Banner de Impacto de IA Local (sin fondo sólido para ver partículas + tarjetas glassmorphic con Tilt 3D) */}
             <section className="w-full space-y-3.5 bg-transparent">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
@@ -736,21 +578,12 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                 />
               </section>
             </div>
-          </div>
-        </div>
+            </div>
+          )}
 
-        {/* TAB 2: RECURSOS HUMANOS Y COLABORADORES CONTRATADOS */}
-        <div
-          className={`w-1/4 shrink-0 transition-opacity duration-300 ${
-            activeTab === 'team'
-              ? 'opacity-100'
-              : isPageSliding
-              ? 'opacity-90 pointer-events-none'
-              : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-          }`}
-          aria-hidden={activeTab !== 'team'}
-        >
-          <div className="w-full flex-1 flex flex-col gap-5 px-4 py-5 sm:px-8 bg-transparent">
+          {/* TAB 2: RECURSOS HUMANOS Y COLABORADORES CONTRATADOS */}
+          {activeTab === 'team' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col gap-5 px-4 py-5 sm:px-8 bg-transparent">
             {/* Header del Equipo y Botón Registrar */}
             <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -992,21 +825,12 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                 </div>
               )}
             </div>
-          </div>
-        </div>
+            </div>
+          )}
 
-        {/* TAB 3: CANDIDATOS AFILIADOS A LA EMPRESA */}
-        <div
-          className={`w-1/4 shrink-0 transition-opacity duration-300 ${
-            activeTab === 'candidates'
-              ? 'opacity-100'
-              : isPageSliding
-              ? 'opacity-90 pointer-events-none'
-              : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-          }`}
-          aria-hidden={activeTab !== 'candidates'}
-        >
-          <div className="w-full flex-1 flex flex-col gap-5 px-4 py-5 sm:px-8 bg-transparent">
+          {/* TAB 3: CANDIDATOS AFILIADOS A LA EMPRESA */}
+          {activeTab === 'candidates' && (
+            <div className="animate-page-enter-left w-full flex-1 flex flex-col gap-5 px-4 py-5 sm:px-8 bg-transparent">
             {/* Header and Search Filters */}
             <div className="w-full space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1071,13 +895,20 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                   </thead>
                   <tbody className="divide-y divide-slate-200/50 dark:divide-white/10">
                     {filteredCandidates.map((app) => (
-                      <tr key={app.id} className="hover:bg-white/40 dark:hover:bg-white/[0.04] transition-colors">
+                      <tr
+                        key={app.id}
+                        onClick={() => setProfileDrawerApp(app)}
+                        className="hover:bg-white/40 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
+                        title="Clic para abrir el perfil del candidato desde la izquierda (Solo lectura)"
+                      >
                         <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
                             {app.candidateName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <span>{app.candidateName}</span>
+                            <span className="group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] underline decoration-transparent group-hover:decoration-current underline-offset-4 transition-colors">
+                              {app.candidateName}
+                            </span>
                             <span className="block text-[11px] text-slate-500 dark:text-slate-400 font-normal">{app.candidateEmail}</span>
                           </div>
                         </td>
@@ -1117,30 +948,121 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                 </table>
               </div>
             </TiltGlassCard>
-          </div>
-        </div>
+            </div>
+          )}
 
-        {/* TAB 4: FICHA INSTITUCIONAL Y CONFIGURACIÓN DE LA EMPRESA */}
-        <div
-          className={`w-1/4 shrink-0 transition-opacity duration-300 ${
-            activeTab === 'profile'
-              ? 'opacity-100'
-              : isPageSliding
-              ? 'opacity-90 pointer-events-none'
-              : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-          }`}
-          aria-hidden={activeTab !== 'profile'}
-        >
-          <div className="w-full flex-1 px-4 py-5 sm:px-8 bg-transparent">
-            <TiltGlassCard maxTiltDeg={1.2} className="max-w-3xl p-6 sm:p-8 rounded-2xl space-y-6">
+          {/* TAB: MENSAJES WEB <-> TELEGRAM */}
+          {activeTab === 'messages' && (
+            <div className="animate-page-enter-left w-full flex-1 px-4 py-5 sm:px-8 space-y-5">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#3a2818] dark:text-[#F1F2EC] tracking-tight">
+                  Mensajes con Candidatos
+                </h2>
+                <p className="text-xs sm:text-sm text-[#70553b] dark:text-slate-400 mt-1">
+                  Supervisa o participa directamente en las conversaciones por postulación vinculadas al Telegram corporativo.
+                </p>
+              </div>
+              <ChatPanel />
+            </div>
+          )}
+
+          {/* TAB: PLANTILLAS DE NOTIFICACIÓN */}
+          {activeTab === 'templates' && (
+            <div className="animate-page-enter-left w-full flex-1 px-4 py-5 sm:px-8">
+              <EmailTemplatesEditor companyName={currentEmpresaNombre} />
+            </div>
+          )}
+
+          {/* TAB 4: FICHA INSTITUCIONAL Y CONFIGURACIÓN DE LA EMPRESA */}
+          {activeTab === 'profile' && (
+            <div className="animate-page-enter-left w-full flex-1 px-4 py-5 sm:px-8 bg-transparent grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+              <TiltGlassCard maxTiltDeg={1.2} className="xl:col-span-7 p-6 sm:p-8 rounded-2xl space-y-6">
               <div className="relative z-10">
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                   <Building2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                   <span>Ficha Institucional y Datos Corporativos</span>
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  Esta información se muestra a los candidatos al explorar tus convocatorias y en los expedientes de contratación oficial.
+                  Personaliza la portada horizontal, el logo cuadrado (4x4) y los datos oficiales de tu empresa.
                 </p>
+              </div>
+
+              {/* Portada Horizontal + Logo 4x4 de la Empresa (Administrado por el Admin) */}
+              <div className="relative z-10 pb-8">
+                {/* Imagen Horizontal de Portada */}
+                <div className="relative h-36 sm:h-44 w-full rounded-2xl overflow-hidden border-2 border-[#C8B193] dark:border-[#232D42] bg-gradient-to-r from-[#170F09] via-[#2E1E12] to-[#0B5D46] shadow-md group">
+                  {companyCoverUrl ? (
+                    <img
+                      src={companyCoverUrl}
+                      alt={`Portada de ${editNombre || currentEmpresaNombre}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-[#E6B87A]/80 dark:text-[#C8FF45]/75 p-4 text-center">
+                      <ImageIcon className="w-7 h-7 mb-1 opacity-80" />
+                      <span className="text-xs font-bold">Portada Horizontal de la Empresa</span>
+                      <span className="text-[10px] opacity-75">Formato horizontal recomendado (1200 × 360 px)</span>
+                    </div>
+                  )}
+
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                    <label className="press px-3 py-1.5 rounded-xl bg-[#170F09]/85 hover:bg-[#170F09] text-[#F6EEE2] border border-[#C8B193]/40 text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-sm">
+                      <Camera className="w-3.5 h-3.5 text-[#C8FF45]" />
+                      <span>{companyCoverUrl ? 'Cambiar Portada' : 'Subir Portada Horizontal'}</span>
+                      <input type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" />
+                    </label>
+                    {companyCoverUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCompanyCoverUrl(null);
+                          localStorage.removeItem(`nexo_company_cover_${currentEmpresaId || currentEmpresaNombre}`);
+                        }}
+                        className="press p-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white cursor-pointer"
+                        title="Quitar portada"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Logo Cuadrado 4x4 superpuesto abajo a la izquierda */}
+                <div className="absolute -bottom-2 left-5 flex items-end gap-3.5">
+                  <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square rounded-2xl overflow-hidden border-4 border-[#FCFBF8] dark:border-[#111622] bg-[#170F09] text-[#C8FF45] shadow-lg flex items-center justify-center group">
+                    {companyLogoUrl ? (
+                      <img
+                        src={companyLogoUrl}
+                        alt={`Logo de ${editNombre || currentEmpresaNombre}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-1">
+                        <span className="text-lg sm:text-xl font-black tracking-tight">
+                          {(editNombre || currentEmpresaNombre || 'EM').slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="text-[9px] font-mono-tabular uppercase text-[#E6B87A]">Logo 4x4</span>
+                      </div>
+                    )}
+
+                    <label
+                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold cursor-pointer gap-0.5"
+                      title="Subir logo cuadrado (4x4) de la empresa"
+                    >
+                      <Camera className="w-4 h-4 text-[#C8FF45]" />
+                      <span>Logo 4x4</span>
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                  </div>
+
+                  <div className="pb-1">
+                    <label className="press inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] hover:bg-[#E5D6BE] dark:bg-white/10 dark:hover:bg-white/15 border border-[#C8B193] dark:border-white/15 text-[11px] font-bold text-[#3A2818] dark:text-[#C8FF45] cursor-pointer">
+                      <Camera className="w-3 h-3" />
+                      <span>{companyLogoUrl ? 'Cambiar Logo (4x4)' : 'Subir Logo (4x4)'}</span>
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <form onSubmit={handleSaveCompanyProfile} className="relative z-10 space-y-4">
@@ -1192,53 +1114,60 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                 </div>
               </form>
             </TiltGlassCard>
-          </div>
-        </div>
-        </div>
-      </main>
 
-      {/* MODAL: REGISTRAR MIEMBRO DE RRHH PARA LA EMPRESA */}
+            <TelegramLinkCard canManage={true} className="xl:col-span-5" />
+          </div>
+          )}
+        </div>
+      </AppShell>
+
+      {/* CAJÓN IZQUIERDO DE PERFIL DE CANDIDATO (SOLO LECTURA) */}
+      <CandidateProfileDrawer
+        isOpen={Boolean(profileDrawerApp)}
+        onClose={() => setProfileDrawerApp(null)}
+        application={profileDrawerApp}
+        onOpenChat={() => {
+          setActiveTab('messages');
+        }}
+      />
+
+      {/* MODAL: REGISTRAR E INVITAR MIEMBRO DE RRHH POR CORREO */}
       <Modal
         isOpen={isNewHROpen}
         onClose={() => setIsNewHROpen(false)}
-        title={`Registrar Reclutador de RRHH · ${currentEmpresaNombre}`}
-        subtitle="Generación de credenciales para evaluadores y analistas de talento humano de tu empresa."
+        title={`Registrar e Invitar Reclutador de RRHH · ${currentEmpresaNombre}`}
+        subtitle="Se enviará un correo de confirmación al reclutador para que active su registro. Todas las notificaciones y mensajes saldrán del correo y Telegram de la empresa."
         maxWidth="md"
         variant="manila"
       >
         <form onSubmit={handleRegisterHR} className="space-y-4 pt-1">
           <Input
             label="Nombre Completo del Reclutador *"
-            placeholder="Lic. Carlos Arismendi"
+            placeholder="Ej. Ana Morales"
             value={hrName}
             onChange={(e) => setHrName(e.target.value)}
             required
           />
 
           <Input
-            label="Correo Corporativo (@empresa) *"
+            label="Correo Electrónico del Reclutador (donde recibirá la confirmación) *"
             type="email"
-            placeholder={`reclutador@${empresaData?.dominio || 'nexo.com'}`}
+            placeholder="reclutador@correo.com"
             value={hrEmail}
             onChange={(e) => setHrEmail(e.target.value)}
             required
           />
 
           <Input
-            label="Teléfono / WhatsApp de Contacto"
-            placeholder="+1 (809) 555-0244"
+            label="Teléfono / Telegram de Contacto (opcional)"
+            placeholder="+58 412 0000000"
             value={hrPhone}
             onChange={(e) => setHrPhone(e.target.value)}
           />
 
-          <Input
-            label="Contraseña de Acceso del Reclutador *"
-            type="password"
-            placeholder="Mínimo 8 caracteres (letras y números)"
-            value={hrPassword}
-            onChange={(e) => setHrPassword(e.target.value)}
-            required
-          />
+          <div className="p-3 rounded-xl bg-[#EFE5D4]/75 dark:bg-slate-900/70 border border-[#C8B193] dark:border-slate-700 text-[11px] text-[#3A2818] dark:text-slate-300 leading-relaxed">
+            Al pulsar <strong>Enviar Invitación por Correo</strong>, le llegará un enlace único de confirmación a su bandeja de entrada para que defina su clave y confirme su registro en RRHH.
+          </div>
 
           <div className="pt-2 flex justify-end gap-2.5">
             <Button
@@ -1256,7 +1185,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
               isLoading={isRegisteringHR}
               className="font-bold px-5"
             >
-              Crear Acceso de RRHH
+              Enviar Invitación por Correo
             </Button>
           </div>
         </form>

@@ -10,6 +10,7 @@ export const updateCandidateProfileSchema = z.object({
   location: z.string().optional(),
   cedulaNumero: z.string().max(30).optional(),
   perfilVisible: z.boolean().optional(),
+  telegramLinked: z.boolean().optional(),
   skills: z.array(z.string()).optional(),
   education: z
     .array(

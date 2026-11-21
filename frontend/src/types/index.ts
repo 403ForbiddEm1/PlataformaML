@@ -109,6 +109,16 @@ export interface Vacancy {
   createdAt: string;
 }
 
+export interface CandidateVisibilitySettings {
+  profileVisible: boolean;
+  showEmail: boolean;
+  showPhone: boolean;
+  showLocation: boolean;
+  showExperience: boolean;
+  showEducation: boolean;
+  showSkills: boolean;
+}
+
 export interface CandidateProfile {
   id: string;
   userId: string;
@@ -121,6 +131,7 @@ export interface CandidateProfile {
   title: string;
   bio: string;
   location: string;
+  visibility?: CandidateVisibilitySettings;
   education: {
     institution: string;
     degree: string;

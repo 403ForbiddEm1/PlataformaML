@@ -14,4 +14,23 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  optimizeDeps: {
+    noDiscovery: true,
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'lucide-react',
+      'canvas-confetti',
+      'clsx',
+      'tailwind-merge',
+      'docx',
+    ],
+  },
+  server: {
+    port: 5173,
+    host: true,
+  },
 })

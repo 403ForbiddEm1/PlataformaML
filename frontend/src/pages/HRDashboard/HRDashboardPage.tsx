@@ -1,11 +1,10 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Application, ApplicationStatus, Vacancy, MLFactorBreakdown, Employee, TerminationDetails } from '@/types';
 import { applicationsService } from '@/services/applications.service';
 import { vacanciesService } from '@/services/vacancies.service';
 import { employeesService } from '@/services/employees.service';
 import { api, USE_MOCK } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { MLScoreBadge } from '@/components/ml/MLScoreBadge';
 import { MLExplainabilityModal } from '@/components/ml/MLExplainabilityModal';
@@ -15,8 +14,11 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { AppShell } from '@/components/layout/AppShell';
+import { type SidebarSection } from '@/components/layout/Sidebar';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { EmailTemplatesEditor } from '@/components/company/EmailTemplatesEditor';
+import { CandidateProfileDrawer } from '@/components/candidates/CandidateProfileDrawer';
 import {
   Users,
   Briefcase,
@@ -60,6 +62,8 @@ import {
   LogOut,
   Hourglass,
   RotateCcw,
+  MessageSquare,
+  ExternalLink,
 } from 'lucide-react';
 
 const parseCalendarDateMs = (raw?: string): number | null => {
@@ -75,19 +79,11 @@ const parseCalendarDateMs = (raw?: string): number | null => {
 
 export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   const { user, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
 
-  // Active top tab: candidates (ranking) vs employees (plantilla)
-  const [activeTab, setActiveTab] = useState<'candidates' | 'employees'>('candidates');
-  const [isPageSliding, setIsPageSliding] = useState(false);
-  const slideTimeoutRef = useRef<number | null>(null);
-
-  // Sliding pill geometry refs for navbar tabs
-  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
-  const candidatesTabRef = useRef<HTMLButtonElement | null>(null);
-  const employeesTabRef = useRef<HTMLButtonElement | null>(null);
-  const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 4, width: 0 });
+  // Active top tab: candidates (ranking), employees (plantilla), messages (chat), templates (plantillas)
+  const [activeTab, setActiveTab] = useState<'candidates' | 'employees' | 'messages' | 'templates'>('candidates');
+  const [profileDrawerApp, setProfileDrawerApp] = useState<Application | null>(null);
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
@@ -718,7 +714,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
       // RF08 & RF09: Decisión humana y notificación automática
       showToast(
         `Candidato ${status}`,
-        `Se registró la decisión y se notificó a ${app.candidateName} vía WhatsApp/Email.`,
+        `Se registró la decisión y se notificó a ${app.candidateName} vía Telegram/Email.`,
         'success'
       );
       loadData();
@@ -727,188 +723,96 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
     }
   };
 
-  const handleSwitchTab = (nextTab: 'candidates' | 'employees') => {
+  const handleSwitchTab = (nextTab: 'candidates' | 'employees' | 'messages' | 'templates') => {
     if (nextTab === 'candidates') {
       setSelectedVacancyForRanking(null);
     }
-    if (nextTab === activeTab) return;
-    setIsPageSliding(true);
     setActiveTab(nextTab);
-    if (slideTimeoutRef.current) {
-      window.clearTimeout(slideTimeoutRef.current);
-    }
-    slideTimeoutRef.current = window.setTimeout(() => {
-      setIsPageSliding(false);
-    }, 520);
   };
 
-  useLayoutEffect(() => {
-    const updatePill = () => {
-      const activeEl = activeTab === 'candidates' ? candidatesTabRef.current : employeesTabRef.current;
-      if (!activeEl) return;
-      setTabPillStyle({
-        left: activeEl.offsetLeft,
-        width: activeEl.offsetWidth,
-      });
-    };
-    updatePill();
-    window.addEventListener('resize', updatePill);
-    return () => window.removeEventListener('resize', updatePill);
-  }, [activeTab, companyVacancies.length, employees.length, selectedVacancyForRanking]);
+  const sidebarSections: SidebarSection[] = [
+    {
+      title: 'TALENTO HUMANO',
+      items: [
+        { id: 'candidates', label: 'Convocatorias & Ranking IA', icon: Briefcase, badge: companyVacancies.length },
+        { id: 'employees', label: 'Plantilla & Nómina', icon: Users, badge: employees.length },
+        { id: 'messages', label: 'Mensajes y Telegram', icon: MessageSquare },
+        { id: 'templates', label: 'Plantillas de Avisos', icon: Mail },
+      ],
+    },
+    {
+      title: 'EXPLORAR',
+      items: [
+        { id: 'external-vacancies', label: 'Catálogo público', icon: ExternalLink, external: true },
+      ],
+    },
+  ];
 
-  useEffect(() => {
-    return () => {
-      if (slideTimeoutRef.current) {
-        window.clearTimeout(slideTimeoutRef.current);
-      }
-    };
-  }, []);
+  const activeTitle =
+    activeTab === 'candidates'
+      ? selectedVacancyForRanking
+        ? `Ranking: ${selectedVacancyForRanking.title}`
+        : 'Convocatorias & Ranking IA'
+      : activeTab === 'employees'
+      ? 'Plantilla & Nómina'
+      : activeTab === 'messages'
+      ? 'Mensajes con Postulantes'
+      : 'Plantillas de Notificación';
 
   return (
     <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
-      {/* Unified Glassmorphic Navbar for RRHH */}
-      <header className="sticky top-0 z-40 bg-[#090A0C]/84 backdrop-blur-xl border-b border-[#F1F2EC]/10 text-[#F1F2EC] transition-all">
-        <div className="max-w-7xl 2xl:max-w-[1560px] mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4">
-          {/* 1. Left: Brand Logo & Slogan */}
-          <div
-            onClick={() => onNavigate('home')}
-            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none min-w-0 order-1"
-          >
-            <BrandLogo className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl p-1 sm:p-1.5 group-hover:scale-105 transition-transform" />
-            <div className="min-w-0">
-              <span className="font-heading font-bold text-[#F1F2EC] tracking-tight text-sm sm:text-base block leading-none group-hover:text-[#C8FF45] transition-colors truncate">
-                PlataformaML · Talento Humano
-              </span>
-              <span className="hidden sm:block text-[9px] font-mono-tabular font-semibold text-[#C8FF45] uppercase tracking-[0.14em] mt-1 truncate">
-                MESA DE EVALUACIÓN
-              </span>
-            </div>
-          </div>
-
-          {/* 2. Center: Glassmorphic Segmented Pill Tabs with Sliding 2D-3D Indicator */}
-          <div className="w-full lg:w-auto order-3 lg:order-2 overflow-x-auto">
-            <div
-              ref={tabsContainerRef}
-              className="relative inline-flex lg:flex items-center gap-1.5 p-1 rounded-xl bg-[#F1F2EC]/6 border border-[#F1F2EC]/10 backdrop-blur-md min-w-full lg:min-w-0"
-            >
-              {/* Animated sliding neon-lime pill */}
-              {tabPillStyle.width > 0 && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1 bottom-1 left-0 rounded-lg bg-[#C8FF45] border border-[#84cc16] shadow-[0_3px_0_#3f6212] transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] z-0"
-                  style={{
-                    width: `${tabPillStyle.width}px`,
-                    transform: `translate3d(${tabPillStyle.left}px, 0, 0)`,
-                  }}
-                />
-              )}
-
-              <button
-                ref={candidatesTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('candidates')}
-                className={`relative z-10 flex-1 lg:flex-initial whitespace-nowrap shrink-0 px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-250 flex items-center justify-center gap-2 cursor-pointer ${
-                  activeTab === 'candidates'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <Briefcase className="w-3.5 h-3.5 text-current shrink-0" />
-                <span>
-                  {selectedVacancyForRanking
-                    ? `Ranking: ${selectedVacancyForRanking.title.slice(0, 22)}...`
-                    : `Convocatorias & Ranking IA (${companyVacancies.length})`}
-                </span>
-              </button>
-
-              <button
-                ref={employeesTabRef}
-                type="button"
-                onClick={() => handleSwitchTab('employees')}
-                className={`relative z-10 flex-1 lg:flex-initial whitespace-nowrap shrink-0 px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-250 flex items-center justify-center gap-2 cursor-pointer ${
-                  activeTab === 'employees'
-                    ? 'text-[#090A0C]'
-                    : 'text-[#777873] hover:text-[#F1F2EC]'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-current shrink-0" />
-                <span>Plantilla & Nómina ({employees.length})</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 3. Right: Company Badge, Theme Toggle, Action & Logout at Far Right */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 order-2 lg:order-3">
-            {/* Company Badge with ID */}
-            <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F1F2EC]/6 border border-[#F1F2EC]/12 text-xs text-[#F1F2EC]">
-              <Building2 className="w-3.5 h-3.5 text-[#4C6FFF]" />
-              <span className="font-semibold text-[#F1F2EC]">
-                {user?.empresaNombre || 'Empresa Afiliada'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-[#090A0C] text-[10px] font-mono-tabular text-[#C8FF45] font-semibold border border-[#C8FF45]/30">
+      <AppShell
+        sections={sidebarSections}
+        activeId={activeTab}
+        onSelect={(id) => {
+          if (id === 'external-vacancies') {
+            onNavigate('vacancies');
+            return;
+          }
+          handleSwitchTab(id as typeof activeTab);
+        }}
+        brandSubtitle="MESA DE EVALUACIÓN · RRHH"
+        crumbRoot="Talento Humano"
+        title={activeTitle}
+        roleLabel="RRHH"
+        contextLabel={user?.empresaNombre || 'Empresa Afiliada'}
+        onLogout={() => {
+          logout();
+          onNavigate('login');
+        }}
+        onBrandClick={() => onNavigate('vacancies')}
+        topbarExtra={
+          <div className="flex items-center gap-2">
+            <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-[#F1F2EC]/6 border border-[#c8b193] dark:border-[#F1F2EC]/12 text-xs text-[#3a2818] dark:text-[#F1F2EC]">
+              <Building2 className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#4C6FFF]" />
+              <span className="font-semibold">{user?.empresaNombre || 'Empresa Afiliada'}</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#3a2818] dark:bg-[#090A0C] text-[10px] font-mono-tabular text-[#EFE5D4] dark:text-[#C8FF45] font-semibold">
                 ID: {(user?.empresaId || 'emp-01').slice(0, 8)}
               </span>
             </div>
-
-            {/* Sun/Moon Toggle with animation */}
-            <ThemeToggle />
-
-            {/* New Vacancy Button */}
             <Button
               size="sm"
               variant="primary"
               onClick={() => setIsCreateVacancyOpen(true)}
               leftIcon={<Plus className="w-3.5 h-3.5" />}
-              className="text-xs"
+              className="text-xs press"
             >
               Nueva Vacante
             </Button>
-
-            {/* Logout Button en esquina derecha del nav top (Red Exit preserved) */}
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                onNavigate('login');
-              }}
-              className="px-2.5 py-2 rounded-xl text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 shadow-[0_3px_0_#881337] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Cerrar sesión</span>
-            </button>
           </div>
-        </div>
-      </header>
-
-      {/* Main Body with Bidirectional Page Slide Carousel (Navbar stays fixed above) */}
-      <main
-        className="w-full overflow-x-hidden flex-1"
-        onClick={() => {
-          if (openMenuEmployeeId) setOpenMenuEmployeeId(null);
-        }}
+        }
       >
         <div
-          className="flex w-[200%] items-start transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
-          style={{
-            transform: activeTab === 'candidates' ? 'translate3d(0%, 0, 0)' : 'translate3d(-50%, 0, 0)',
+          className="w-full flex-1"
+          onClick={() => {
+            if (openMenuEmployeeId) setOpenMenuEmployeeId(null);
           }}
         >
-          {/* PANEL 1 (LEFT): CONVOCATORIAS & RANKING IA */}
-          <div
-            className={`w-1/2 shrink-0 transition-opacity duration-300 ${
-              activeTab === 'candidates'
-                ? 'opacity-100'
-                : isPageSliding
-                ? 'opacity-90 pointer-events-none'
-                : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={activeTab !== 'candidates'}
-          >
+          {/* PANEL 1: CONVOCATORIAS & RANKING IA */}
+          {activeTab === 'candidates' && (
             <div
               key={selectedVacancyForRanking?.id || 'list'}
-              className="max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6"
+              className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6"
             >
             {/* VISTA A: LISTADO Y GESTIÓN DE CONVOCATORIAS (ACTIVAS / INACTIVAS) */}
             {!selectedVacancyForRanking ? (
@@ -1319,13 +1223,27 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
                           <div className="space-y-1.5 min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2.5">
-                              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
-                                <span>{app.candidateName}</span>
+                              <button
+                                type="button"
+                                onClick={() => setProfileDrawerApp(app)}
+                                className="press text-base font-bold text-slate-900 dark:text-slate-100 hover:text-[#0B5D46] dark:hover:text-[#C8FF45] truncate flex items-center gap-2 cursor-pointer text-left"
+                                title="Abrir perfil del candidato desde la izquierda (Solo lectura)"
+                              >
+                                <span className="underline decoration-[#C8B193] dark:decoration-[#C8FF45]/40 underline-offset-4">
+                                  {app.candidateName}
+                                </span>
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                   {app.candidateAge || 26} años
                                 </span>
-                              </h3>
+                              </button>
                               <Badge status={app.status} />
+                              <button
+                                type="button"
+                                onClick={() => setProfileDrawerApp(app)}
+                                className="press px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-[#EFE5D4] hover:bg-[#E5D6BE] dark:bg-white/10 dark:hover:bg-white/15 text-[#3A2818] dark:text-[#C8FF45] border border-[#C8B193] dark:border-white/15 cursor-pointer"
+                              >
+                                Ver Perfil ➔
+                              </button>
                             </div>
 
                             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1484,21 +1402,12 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                 </div>
               </div>
             )}
-          </div>
-          </div>
+            </div>
+          )}
 
-          {/* PANEL 2 (RIGHT): PLANTILLA DE EMPLEADOS CONTRATADOS */}
-          <div
-            className={`w-1/2 shrink-0 transition-opacity duration-300 ${
-              activeTab === 'employees'
-                ? 'opacity-100'
-                : isPageSliding
-                ? 'opacity-90 pointer-events-none'
-                : 'max-h-0 overflow-hidden opacity-0 pointer-events-none'
-            }`}
-            aria-hidden={activeTab !== 'employees'}
-          >
-            <div className="max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+          {/* PANEL 2: PLANTILLA DE EMPLEADOS CONTRATADOS */}
+          {activeTab === 'employees' && (
+            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
             {/* Header Metrics Banner for Employees */}
             <div className="bg-slate-900 dark:bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-7 text-white space-y-6 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -2072,9 +1981,31 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
               </div>
             )}
             </div>
-          </div>
+          )}
+
+          {/* PANEL 3: MENSAJES WEB <-> TELEGRAM */}
+          {activeTab === 'messages' && (
+            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#3a2818] dark:text-[#F1F2EC] tracking-tight">
+                  Mensajes con Candidatos
+                </h2>
+                <p className="text-xs sm:text-sm text-[#70553b] dark:text-slate-400 mt-1">
+                  Conversa directamente por postulación. Tus mensajes llevan firma de RRHH y llegan al Telegram del candidato.
+                </p>
+              </div>
+              <ChatPanel />
+            </div>
+          )}
+
+          {/* PANEL 4: PLANTILLAS DE NOTIFICACIÓN */}
+          {activeTab === 'templates' && (
+            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+              <EmailTemplatesEditor companyName={user?.empresaNombre} />
+            </div>
+          )}
         </div>
-      </main>
+      </AppShell>
 
       {/* ============================================================
           NEUMORPHIC MANILA DOSSIER MODAL: CREAR NUEVA VACANTE
@@ -2393,6 +2324,24 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
           </div>
         </div>
       )}
+
+      {/* Left-Side Read-Only Candidate Profile Drawer */}
+      <CandidateProfileDrawer
+        isOpen={Boolean(profileDrawerApp)}
+        onClose={() => setProfileDrawerApp(null)}
+        application={profileDrawerApp}
+        onOpenExplainability={(app) => {
+          setSelectedApp(app);
+          setIsExplainOpen(true);
+        }}
+        onOpenChat={() => {
+          setActiveTab('messages');
+        }}
+        onOpenFullApplication={(app) => {
+          setSelectedApp(app);
+          setIsDetailOpen(true);
+        }}
+      />
 
       {/* Application Detail & Recruiter Notes Modal */}
       <ApplicationDetailModal

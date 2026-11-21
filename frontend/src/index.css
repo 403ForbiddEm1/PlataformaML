@@ -4,10 +4,15 @@
 
 @layer base {
   :root {
-    --font-sans: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-heading: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+    --font-sans: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-heading: 'Bricolage Grotesque', 'Figtree', system-ui, -apple-system, sans-serif;
     --font-serif: 'Source Serif 4', Georgia, Cambria, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* Motion tokens (Emil Kowalski): curvas con carácter, nunca ease-in en UI */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
     /* Core Brand Palette */
     --palette-obsidian: #090A0C;
@@ -54,7 +59,8 @@
     transition: background-color 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.22s cubic-bezier(0.22, 1, 0.36, 1);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
   }
 
   html.dark body {
@@ -178,7 +184,7 @@
 @keyframes slideFadeFromLeft {
   0% {
     opacity: 0;
-    transform: translate3d(-20px, 0, 0);
+    transform: translate3d(0, 5px, 0);
   }
   100% {
     opacity: 1;
@@ -187,47 +193,19 @@
 }
 
 .animate-page-enter-left {
-  animation: slideFadeFromLeft 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: slideFadeFromLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Pause initial entrance animations while the post-login / logout loader covers the viewport */
 .entrance-paused .animate-page-enter-left,
-.entrance-paused .animate-page-enter-left section,
-.entrance-paused .animate-page-enter-left article,
-.entrance-paused .animate-page-enter-left form > div,
 .entrance-paused .slide-left-item,
 .entrance-paused main > * {
   animation: none !important;
   opacity: 0 !important;
 }
 
-/* Staggered left-to-right entrance for majority of page elements on mount */
-main > *,
-.animate-page-enter-left section,
-.animate-page-enter-left article,
-.animate-page-enter-left form > div,
 .slide-left-item {
-  animation: slideFadeFromLeft 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-}
-
-main > *:nth-child(1),
-.animate-page-enter-left form > div:nth-child(1) {
-  animation-delay: 0.02s;
-}
-
-main > *:nth-child(2),
-.animate-page-enter-left form > div:nth-child(2) {
-  animation-delay: 0.05s;
-}
-
-main > *:nth-child(3),
-.animate-page-enter-left form > div:nth-child(3) {
-  animation-delay: 0.08s;
-}
-
-main > *:nth-child(4),
-.animate-page-enter-left form > div:nth-child(4) {
-  animation-delay: 0.11s;
+  animation: slideFadeFromLeft 0.22s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* Dynamic smooth displacement & selection micro-interactions */
@@ -1077,4 +1055,121 @@ input[type="button"]:not(.btn-unstyled):not([class*="rounded-full"]):active {
   opacity: 1;
   transform: translateX(0);
   filter: blur(0px);
+}
+
+
+/* ============================================================
+   MOTION UTILITIES (Emil Kowalski · design engineering)
+   - Feedback inmediato al presionar
+   - Solo transform/opacity en interacciones frecuentes
+   - Hover únicamente en dispositivos con puntero fino
+   ============================================================ */
+.press {
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out), color 160ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop-in {
+  animation: popIn 200ms var(--ease-out) backwards;
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-message-in {
+  animation: messageIn 220ms var(--ease-out) backwards;
+}
+
+/* Skeleton shimmer para estados de carga */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(119, 120, 115, 0.12) 25%, rgba(119, 120, 115, 0.26) 37%, rgba(119, 120, 115, 0.12) 63%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 0.5rem;
+}
+
+/* Sidebar auto-ocultable fluido: curva orgánica estilo resorte y píldora activa deslizante */
+.app-sidebar-shell {
+  transition:
+    clip-path 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: clip-path, transform;
+}
+@media (min-width: 768px) {
+  .app-sidebar-shell[data-expanded="false"] {
+    clip-path: inset(0 204px 0 0);
+  }
+  .app-sidebar-shell[data-expanded="true"] {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.app-sidebar-label {
+  transition:
+    opacity 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.app-sidebar-rail-edge {
+  transition:
+    transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+.app-sidebar-active-pill {
+  transition:
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+  will-change: transform, height;
+}
+.app-sidebar-hover-pill {
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 150ms ease;
+  will-change: transform, height, opacity;
+}
+.app-content-shift {
+  transition: padding-left 340ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar-shell,
+  .app-sidebar-label,
+  .app-sidebar-rail-edge,
+  .app-content-shift,
+  .animate-pop-in,
+  .animate-message-in,
+  .press {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
 }

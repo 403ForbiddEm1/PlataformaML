@@ -1,37 +1,74 @@
-# Dependencias
+# Dependencias y cachés de paquetes
 node_modules/
+**/node_modules/
+.vite/
+**/.vite/
+.pnpm-store/
+
+# Entornos virtuales y artefactos de Python (ML Service)
 __pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
 venv/
 .venv/
+**/venv/
+**/.venv/
+.pytest_cache/
 
-# Variables de entorno
+# Variables de entorno y secretos (nunca subir .env reales)
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+!.env.example
+!**/.env.example
 
-# Build / compilación
+# Build / compilación y cachés de TypeScript
 dist/
 build/
+**/dist/
+**/build/
+*.tsbuildinfo
+**/*.tsbuildinfo
 
-# Archivos de sistema
+# Datos locales en tiempo de ejecución y almacenamiento privado
+backend/data/
+backend/storage/private/cv/*
+backend/storage/private/cedulas/*
+backend/storage/private/photos/*
+backend/storage/private/certificates/*
+backend/storage/private/datasets/*
+!backend/storage/private/**/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# Modelos entrenados binarios pesados
+trained-models/*.pkl
+trained-models/*.joblib
+
+# Archivos de sistema operativo
 .DS_Store
 Thumbs.db
+Desktop.ini
 *.swp
 *.swo
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# IDE
+# Editores, IDEs y directorios de skills/agentes IA
 .vscode/
 .idea/
-
-# Modelos entrenados (pueden ser grandes)
-trained-models/*.pkl
-trained-models/*.joblib
-
-# Uploads locales
-uploads/*
-!uploads/.gitkeep
+.agents/
+.claude/
+.cursor/
+.devin/
+.windsurf/
+skills-lock.json

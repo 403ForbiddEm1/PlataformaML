@@ -39,7 +39,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onLoginSuccess,
   onGoToVacancies,
 }) => {
-  const { login, register } = useAuth();
+  const { login, setSessionUser } = useAuth();
   const { isDark } = useTheme();
   const { showToast } = useToast();
 
@@ -51,9 +51,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Inline password recovery state
+  // Inline password recovery state (Correo o Código de Telegram)
+  const [recoverMethod, setRecoverMethod] = useState<'CORREO' | 'TELEGRAM'>('CORREO');
   const [recoverEmail, setRecoverEmail] = useState('');
+  const [recoverPhone, setRecoverPhone] = useState('');
+  const [recoverCodeSent, setRecoverCodeSent] = useState(false);
+  const [recoverCode, setRecoverCode] = useState('');
+  const [recoverNewPassword, setRecoverNewPassword] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
+
+  // Google Auth + Email 6-digit OTP Verification state (Candidato Login & Registro)
+  const [isGoogleFlowOpen, setIsGoogleFlowOpen] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [googleName, setGoogleName] = useState('');
+  const [googlePhone, setGooglePhone] = useState('');
+  const [googlePassword, setGooglePassword] = useState('');
+  const [googleCodeSent, setGoogleCodeSent] = useState(false);
+  const [googleCode, setGoogleCode] = useState('');
+  const [isGoogleSending, setIsGoogleSending] = useState(false);
+  const [isGoogleVerifying, setIsGoogleVerifying] = useState(false);
+  const [googleFlowOrigin, setGoogleFlowOrigin] = useState<'login' | 'register'>('login');
+  const [googleAccounts, setGoogleAccounts] = useState<
+    Array<{ id: string; email: string; name: string; avatar: string }>
+  >([]);
+  const [isAddingOtherGoogle, setIsAddingOtherGoogle] = useState(false);
+  const [isLoadingGoogleAccounts, setIsLoadingGoogleAccounts] = useState(false);
 
   // Register Candidate state (RF01, RF05)
   const [regName, setRegName] = useState('');
@@ -125,17 +147,55 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   const handleRecover = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recoverEmail) return;
+    if (!recoverCodeSent) {
+      if (recoverMethod === 'CORREO' && !recoverEmail.trim()) {
+        showToast('Correo requerido', 'Ingresa tu correo registrado para recibir el código.', 'error');
+        return;
+      }
+      if (recoverMethod === 'TELEGRAM' && !recoverPhone.trim()) {
+        showToast('Número requerido', 'Ingresa tu número de Telegram registrado para recibir el código.', 'error');
+        return;
+      }
+      setIsRecovering(true);
+      try {
+        const res = await authService.sendPasswordSecurityCode({
+          canal: recoverMethod,
+          email: recoverMethod === 'CORREO' ? recoverEmail : undefined,
+          phone: recoverMethod === 'TELEGRAM' ? recoverPhone : undefined,
+        });
+        setRecoverCodeSent(true);
+        showToast('Código enviado', res.mensaje, 'success');
+      } catch (err: any) {
+        showToast('No se pudo enviar', err?.message || 'Verifica los datos ingresados.', 'error');
+      } finally {
+        setIsRecovering(false);
+      }
+      return;
+    }
+
+    if (recoverCode.trim().length < 6) {
+      showToast('Código incompleto', 'Ingresa el código de 6 dígitos que recibiste.', 'error');
+      return;
+    }
+    if (recoverNewPassword.length < 6) {
+      showToast('Contraseña muy corta', 'La nueva contraseña debe tener al menos 6 caracteres.', 'error');
+      return;
+    }
     setIsRecovering(true);
     try {
-      await authService.recoverPassword(recoverEmail);
-      showToast(
-        'Correo de recuperación enviado',
-        'Hemos enviado un enlace seguro para restablecer tu clave.',
-        'success'
-      );
+      await authService.verifyPasswordSecurityCode({
+        code: recoverCode,
+        newPassword: recoverNewPassword,
+        email: recoverMethod === 'CORREO' ? recoverEmail : undefined,
+        phone: recoverMethod === 'TELEGRAM' ? recoverPhone : undefined,
+      });
+      showToast('¡Contraseña restablecida!', 'Ya puedes iniciar sesión con tu nueva contraseña.', 'success');
       setIsRecoverMode(false);
-      setRecoverEmail('');
+      setRecoverCodeSent(false);
+      setRecoverCode('');
+      setRecoverNewPassword('');
+    } catch (err: any) {
+      showToast('Código inválido', err?.message || 'El código es incorrecto o expiró.', 'error');
     } finally {
       setIsRecovering(false);
     }
@@ -144,20 +204,175 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const handleRegisterCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regName || !regEmail || !regPassword) return;
+    // Enviar código de confirmación de 6 dígitos al correo del candidato antes de crear/activar la sesión
     setIsRegistering(true);
     try {
-      await register({
-        name: regName,
+      await authService.sendGoogleCode({
         email: regEmail,
-        password: regPassword,
+        name: regName,
         phone: regPhone,
+        password: regPassword,
+        modo: 'register',
       });
-      showToast('Registro exitoso', 'Tu cuenta de candidato ha sido creada.', 'success');
-      onLoginSuccess('candidato');
-    } catch {
-      showToast('Error', 'No se pudo completar el registro de candidato.', 'error');
+      setGoogleEmail(regEmail.trim().toLowerCase());
+      setGoogleName(regName.trim());
+      setGooglePhone(regPhone.trim());
+      setGooglePassword(regPassword);
+      setGoogleCode('');
+      setGoogleCodeSent(true);
+      setGoogleFlowOrigin('register');
+      setIsGoogleFlowOpen(true);
+      showToast(
+        'Código enviado a tu correo',
+        `Enviamos un código de confirmación de 6 dígitos a ${regEmail}. Ingrésalo para activar tu cuenta.`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Error', err?.message || 'No se pudo enviar el código de confirmación.', 'error');
     } finally {
       setIsRegistering(false);
+    }
+  };
+
+  const openGoogleAuthFlow = async (origin: 'login' | 'register') => {
+    setGoogleFlowOrigin(origin);
+    setGoogleEmail(origin === 'register' ? regEmail : email);
+    setGoogleName(origin === 'register' ? regName : '');
+    setGooglePhone(origin === 'register' ? regPhone : '');
+    setGooglePassword(origin === 'register' ? regPassword : '');
+    setGoogleCode('');
+    setGoogleCodeSent(false);
+    setIsAddingOtherGoogle(false);
+    setIsGoogleFlowOpen(true);
+
+    if (origin === 'login') {
+      setIsLoadingGoogleAccounts(true);
+      try {
+        const dbAccs = await authService.getGoogleChooserAccounts();
+        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
+        const savedAccs: Array<{ id: string; email: string; name: string; avatar: string }> = savedRaw
+          ? JSON.parse(savedRaw)
+          : [];
+        const byEmail = new Map<string, { id: string; email: string; name: string; avatar: string }>();
+
+        for (const s of [...savedAccs, ...dbAccs]) {
+          const em = (s.email || '').toLowerCase().trim();
+          if (em && !byEmail.has(em)) {
+            byEmail.set(em, {
+              id: s.id || em,
+              email: em,
+              name: s.name || em.split('@')[0],
+              avatar: (s.avatar || s.name?.[0] || em[0] || 'G').toUpperCase().slice(0, 2),
+            });
+          }
+        }
+        setGoogleAccounts(Array.from(byEmail.values()));
+      } finally {
+        setIsLoadingGoogleAccounts(false);
+      }
+    }
+  };
+
+  const handleSelectGoogleAccount = async (acc: { email: string; name?: string }) => {
+    setIsGoogleVerifying(true);
+    try {
+      const { user: loggedUser } = await authService.quickGoogleLogin({
+        email: acc.email,
+        name: acc.name,
+      });
+      // Guardar en cuentas recordadas del navegador para próximas sesiones
+      try {
+        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
+        const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
+        const exists = savedAccs.some((a) => a.email?.toLowerCase() === loggedUser.email.toLowerCase());
+        if (!exists) {
+          savedAccs.unshift({
+            id: loggedUser.id,
+            email: loggedUser.email,
+            name: loggedUser.name,
+            avatar: loggedUser.avatar || loggedUser.name.slice(0, 2).toUpperCase(),
+          });
+          localStorage.setItem('nexo_saved_google_accounts', JSON.stringify(savedAccs.slice(0, 6)));
+        }
+      } catch {}
+
+      setSessionUser(loggedUser);
+      showToast('¡Bienvenido(a)!', `Sesión iniciada con Google como ${loggedUser.name}.`, 'success');
+      setIsGoogleFlowOpen(false);
+      onLoginSuccess(loggedUser.role);
+    } catch (err: any) {
+      showToast('Error al iniciar con Google', err?.message || 'No se pudo iniciar sesión.', 'error');
+    } finally {
+      setIsGoogleVerifying(false);
+    }
+  };
+
+  const handleSendGoogleOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleEmail || !googleEmail.includes('@')) {
+      showToast('Correo requerido', 'Ingresa tu correo de Google (@gmail.com) para recibir el código.', 'error');
+      return;
+    }
+    setIsGoogleSending(true);
+    try {
+      const res = await authService.sendGoogleCode({
+        email: googleEmail,
+        name: googleName || undefined,
+        phone: googlePhone || undefined,
+        password: googlePassword || undefined,
+        modo: googleFlowOrigin,
+      });
+      setGoogleCodeSent(true);
+      showToast('Código enviado', res.mensaje, 'success');
+    } catch (err: any) {
+      showToast('Error al enviar código', err?.message || 'Verifica el correo ingresado.', 'error');
+    } finally {
+      setIsGoogleSending(false);
+    }
+  };
+
+  const handleVerifyGoogleOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleCode || googleCode.trim().length < 6) {
+      showToast('Código incompleto', 'Ingresa el código de 6 dígitos que llegó a tu correo.', 'error');
+      return;
+    }
+    setIsGoogleVerifying(true);
+    try {
+      const { user: verifiedUser } = await authService.verifyGoogleCode({
+        email: googleEmail,
+        code: googleCode,
+        name: googleName || undefined,
+        phone: googlePhone || undefined,
+        password: googlePassword || undefined,
+      });
+      setSessionUser(verifiedUser);
+      // Guardar cuenta verificada en el selector de Google del navegador
+      try {
+        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
+        const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
+        const exists = savedAccs.some((a) => a.email?.toLowerCase() === verifiedUser.email.toLowerCase());
+        if (!exists) {
+          savedAccs.unshift({
+            id: verifiedUser.id,
+            email: verifiedUser.email,
+            name: verifiedUser.name,
+            avatar: verifiedUser.avatar || verifiedUser.name.slice(0, 2).toUpperCase(),
+          });
+          localStorage.setItem('nexo_saved_google_accounts', JSON.stringify(savedAccs.slice(0, 6)));
+        }
+      } catch {}
+      showToast(
+        '¡Correo confirmado con éxito!',
+        `Bienvenido(a), ${verifiedUser.name}. Tu cuenta ha sido verificada.`,
+        'success'
+      );
+      setIsGoogleFlowOpen(false);
+      onLoginSuccess(verifiedUser.role);
+    } catch (err: any) {
+      showToast('Código inválido', err?.message || 'El código ingresado es incorrecto o expiró.', 'error');
+    } finally {
+      setIsGoogleVerifying(false);
     }
   };
 
@@ -395,7 +610,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       </div>
                     </div>
 
-                    <div className="pt-1">
+                    <div className="pt-1 space-y-2.5">
                       <button
                         type="submit"
                         disabled={isLoading}
@@ -403,6 +618,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       >
                         <span>{isLoading ? 'Verificando credenciales...' : 'Ingresar a PlataformaML'}</span>
                         <ArrowRight className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openGoogleAuthFlow('login')}
+                        className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-xs sm:text-sm border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2.5 cursor-pointer"
+                      >
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                        <span>Continuar con Google</span>
                       </button>
                     </div>
                   </form>
@@ -441,51 +670,126 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 </>
               ) : (
-                /* Inline Password Recovery View (No Modal) */
+                /* Inline Password Recovery View (Por Correo o Código de Telegram) */
                 <div className="space-y-4">
                   <button
                     type="button"
-                    onClick={() => setIsRecoverMode(false)}
+                    onClick={() => {
+                      setIsRecoverMode(false);
+                      setRecoverCodeSent(false);
+                    }}
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4C6FFF] dark:text-[#C8FF45] hover:underline cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Volver a Iniciar sesión</span>
                   </button>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-[#4C6FFF]/15 text-[#4C6FFF] dark:bg-[#C8FF45]/15 dark:text-[#C8FF45] border border-[#4C6FFF]/30 dark:border-[#C8FF45]/30 flex items-center justify-center shrink-0">
                         <KeyRound className="w-4 h-4" />
                       </div>
                       <div>
                         <h2 className="font-heading text-xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight">
-                          Recuperar acceso
+                          Recuperar contraseña
                         </h2>
                         <p className="text-[11px] text-[#777873]">
-                          Código de seguridad válido por 15 minutos
+                          Elige recibir tu código de 6 dígitos por Correo o por Telegram
                         </p>
                       </div>
+                    </div>
+
+                    {/* Selector de método: Correo vs Código de Telegram */}
+                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#090A0C]/6 dark:bg-[#F1F2EC]/8 border border-[#090A0C]/12 dark:border-[#F1F2EC]/12">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecoverMethod('CORREO');
+                          setRecoverCodeSent(false);
+                        }}
+                        className={`press py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
+                          recoverMethod === 'CORREO'
+                            ? 'bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C]'
+                            : 'text-[#777873] hover:text-[#090A0C] dark:hover:text-[#F1F2EC]'
+                        }`}
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Por Correo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecoverMethod('TELEGRAM');
+                          setRecoverCodeSent(false);
+                        }}
+                        className={`press py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
+                          recoverMethod === 'TELEGRAM'
+                            ? 'bg-[#229ED9] text-white'
+                            : 'text-[#777873] hover:text-[#090A0C] dark:hover:text-[#F1F2EC]'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                        </svg>
+                        <span>Código de Telegram</span>
+                      </button>
                     </div>
                   </div>
 
                   <form onSubmit={handleRecover} className="space-y-3.5">
-                    <Input
-                      label="Correo electrónico registrado *"
-                      type="email"
-                      value={recoverEmail}
-                      onChange={(e) => setRecoverEmail(e.target.value)}
-                      placeholder="ejemplo@correo.com"
-                      leftIcon={<Mail className="w-4 h-4" />}
-                      className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
-                      required
-                    />
+                    {recoverMethod === 'CORREO' ? (
+                      <Input
+                        label="Correo electrónico registrado *"
+                        type="email"
+                        value={recoverEmail}
+                        onChange={(e) => setRecoverEmail(e.target.value)}
+                        placeholder="ejemplo@correo.com"
+                        leftIcon={<Mail className="w-4 h-4" />}
+                        className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
+                        required
+                      />
+                    ) : (
+                      <Input
+                        label="Número de Telegram registrado *"
+                        type="tel"
+                        value={recoverPhone}
+                        onChange={(e) => setRecoverPhone(e.target.value)}
+                        placeholder="+58 412 0000000"
+                        className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
+                        required
+                      />
+                    )}
+
+                    {recoverCodeSent && (
+                      <div className="space-y-3 pt-1 animate-pop-in">
+                        <Input
+                          label="Código de verificación (6 dígitos) *"
+                          value={recoverCode}
+                          onChange={(e) => setRecoverCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="123456"
+                          required
+                        />
+                        <Input
+                          label="Nueva contraseña *"
+                          type="password"
+                          isPassword
+                          value={recoverNewPassword}
+                          onChange={(e) => setRecoverNewPassword(e.target.value)}
+                          placeholder="Mínimo 6 caracteres"
+                          required
+                        />
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2.5 pt-1">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setIsRecoverMode(false)}
+                        onClick={() => {
+                          setIsRecoverMode(false);
+                          setRecoverCodeSent(false);
+                        }}
                         className="cursor-pointer"
                       >
                         Cancelar
@@ -495,7 +799,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         disabled={isRecovering}
                         className="flex-1 py-2.5 px-4 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-xs tracking-tight border border-[#84cc16] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_3px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer disabled:opacity-50"
                       >
-                        {isRecovering ? 'Enviando enlace...' : 'Enviar enlace de recuperación'}
+                        {isRecovering
+                          ? 'Procesando...'
+                          : recoverCodeSent
+                          ? 'Confirmar código y cambiar clave'
+                          : recoverMethod === 'TELEGRAM'
+                          ? 'Enviar código por Telegram'
+                          : 'Enviar código al correo'}
                       </button>
                     </div>
                   </form>
@@ -663,13 +973,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               ) : (
                 /* INLINE CANDIDATE REGISTRATION */
                 <form onSubmit={handleRegisterCandidate} className="space-y-3.5">
-                  <div>
-                    <h2 className="font-heading text-xl sm:text-2xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
-                      Apertura de Expediente de Candidato
-                    </h2>
-                    <p className="text-xs text-[#777873] mt-0.5">
-                      Crea tu cuenta oficial en PlataformaML para postularte y gestionar tu currículum.
-                    </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h2 className="font-heading text-xl sm:text-2xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
+                        Apertura de Expediente de Candidato
+                      </h2>
+                      <p className="text-xs text-[#777873] mt-0.5">
+                        Crea tu cuenta oficial en PlataformaML y confírmala con el código enviado a tu correo.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openGoogleAuthFlow('register')}
+                      className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-xs border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
+                    >
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                      </svg>
+                      <span>Registrarse con Google</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -691,7 +1016,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       required
                     />
                     <Input
-                      label="Teléfono / WhatsApp"
+                      label="Teléfono / Telegram"
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value)}
                       placeholder="+1 (809) 000-0000"
@@ -866,6 +1191,246 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <span>© 2026 PlataformaML · Sistema Inteligente de Evaluación Curricular</span>
           <span className="hidden sm:inline font-mono-tabular text-[10px]">JWT · XAI · MULTI-TENANT</span>
         </footer>
+
+        {/* =====================================================================
+            4. GOOGLE / CORREO 6-DIGIT VERIFICATION CODE MODAL
+           ===================================================================== */}
+        {isGoogleFlowOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-2xl bg-[#F1F2EC] dark:bg-[#12151C] border border-[#090A0C]/20 dark:border-[#C8FF45]/35 shadow-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3 border-b border-[#090A0C]/12 dark:border-white/12 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-white dark:bg-[#1A1F2B] border border-[#090A0C]/15 dark:border-white/15 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-base font-bold text-[#090A0C] dark:text-[#F1F2EC]">
+                      {googleFlowOrigin === 'register'
+                        ? 'Confirmar Registro con Código'
+                        : 'Elige una cuenta'}
+                    </h3>
+                    <p className="text-[11px] text-[#777873]">
+                      {googleFlowOrigin === 'register'
+                        ? 'Verificación de seguridad por código de 6 dígitos al correo'
+                        : 'para ir a PlataformaML'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsGoogleFlowOpen(false)}
+                  className="text-xs font-semibold text-[#777873] hover:text-[#090A0C] dark:hover:text-white px-2 py-1 rounded-lg cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {googleFlowOrigin === 'login' ? (
+                /* SELECTOR RÁPIDO DE CUENTAS DE GOOGLE (1 CLIC, SIN CÓDIGO) */
+                <div className="space-y-3">
+                  {!isAddingOtherGoogle ? (
+                    <>
+                      <div className="max-h-64 overflow-y-auto divide-y divide-[#090A0C]/10 dark:divide-white/10 rounded-xl border border-[#090A0C]/12 dark:border-white/12 bg-white/75 dark:bg-[#171B24]">
+                        {isLoadingGoogleAccounts ? (
+                          <div className="p-5 text-center text-xs text-[#777873]">
+                            Cargando cuentas de Google...
+                          </div>
+                        ) : googleAccounts.length > 0 ? (
+                          googleAccounts.map((acc) => (
+                            <button
+                              key={acc.email}
+                              type="button"
+                              disabled={isGoogleVerifying}
+                              onClick={() => handleSelectGoogleAccount(acc)}
+                              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#4C6FFF]/8 dark:hover:bg-[#C8FF45]/10 transition-colors text-left cursor-pointer disabled:opacity-50"
+                            >
+                              <div className="w-9 h-9 rounded-full bg-[#4C6FFF] dark:bg-[#C8FF45] text-white dark:text-[#090A0C] font-heading font-bold text-xs flex items-center justify-center shrink-0">
+                                {acc.avatar}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs sm:text-sm font-bold text-[#090A0C] dark:text-[#F1F2EC] truncate">
+                                  {acc.name}
+                                </div>
+                                <div className="text-[11px] text-[#777873] truncate">
+                                  {acc.email}
+                                </div>
+                              </div>
+                              <ArrowRight className="w-4 h-4 text-[#777873] shrink-0" />
+                            </button>
+                          ))
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGoogleEmail('');
+                            setGoogleName('');
+                            setIsAddingOtherGoogle(true);
+                          }}
+                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#4C6FFF]/8 dark:hover:bg-[#C8FF45]/10 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-[#090A0C]/10 dark:bg-white/10 text-[#090A0C] dark:text-[#F1F2EC] flex items-center justify-center shrink-0">
+                            <UserPlus className="w-4 h-4" />
+                          </div>
+                          <div className="text-xs sm:text-sm font-semibold text-[#090A0C] dark:text-[#F1F2EC]">
+                            Usar otra cuenta de Google
+                          </div>
+                        </button>
+                      </div>
+
+                      <p className="text-[10px] text-[#777873] leading-relaxed">
+                        Al continuar, Google compartirá tu nombre y dirección de correo electrónico con PlataformaML para iniciar sesión de inmediato.
+                      </p>
+                    </>
+                  ) : (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!googleEmail || !googleEmail.includes('@')) return;
+                        handleSelectGoogleAccount({ email: googleEmail, name: googleName || undefined });
+                      }}
+                      className="space-y-3"
+                    >
+                      <Input
+                        label="Correo de Google *"
+                        type="email"
+                        placeholder="tucorreo@gmail.com"
+                        leftIcon={<Mail className="w-4 h-4" />}
+                        value={googleEmail}
+                        onChange={(e) => setGoogleEmail(e.target.value)}
+                        required
+                      />
+                      <Input
+                        label="Tu nombre (opcional)"
+                        placeholder="María Pérez"
+                        value={googleName}
+                        onChange={(e) => setGoogleName(e.target.value)}
+                      />
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingOtherGoogle(false)}
+                          className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-[#090A0C] dark:text-[#F1F2EC] bg-white/80 dark:bg-[#1A1F2B] border border-[#090A0C]/20 dark:border-white/15 cursor-pointer"
+                        >
+                          ← Volver a la lista
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isGoogleVerifying}
+                          className="flex-1 py-2.5 px-4 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-xs sm:text-sm border border-[#84cc16] shadow-[0_3px_0_#3f6212] cursor-pointer disabled:opacity-50"
+                        >
+                          {isGoogleVerifying ? 'Iniciando sesión...' : 'Continuar'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : !googleCodeSent ? (
+                <form onSubmit={handleSendGoogleOtp} className="space-y-3.5">
+                  <Input
+                    label="Correo electrónico de Google *"
+                    type="email"
+                    placeholder="tucorreo@gmail.com"
+                    leftIcon={<Mail className="w-4 h-4" />}
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    required
+                  />
+                  {googleFlowOrigin === 'register' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <Input
+                        label="Nombres y Apellidos"
+                        placeholder="María Pérez"
+                        value={googleName}
+                        onChange={(e) => setGoogleName(e.target.value)}
+                      />
+                      <Input
+                        label="Teléfono / Telegram"
+                        placeholder="+58 412 0000000"
+                        value={googlePhone}
+                        onChange={(e) => setGooglePhone(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsGoogleFlowOpen(false)}
+                      className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#090A0C] dark:text-[#F1F2EC] bg-white/80 dark:bg-[#1A1F2B] border border-[#090A0C]/20 dark:border-white/15 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isGoogleSending}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-xs sm:text-sm border border-[#84cc16] shadow-[0_3px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isGoogleSending ? 'Enviando código...' : 'Enviar código a mi correo'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyGoogleOtp} className="space-y-4">
+                  <div className="p-3 rounded-xl bg-[#4C6FFF]/10 dark:bg-[#C8FF45]/10 border border-[#4C6FFF]/25 dark:border-[#C8FF45]/30 text-xs text-[#090A0C] dark:text-[#F1F2EC]">
+                    Enviamos un código de 6 dígitos a <strong className="font-bold">{googleEmail}</strong>. Revisa tu bandeja de entrada e ingrésalo abajo:
+                  </div>
+
+                  <Input
+                    label="Código de verificación (6 dígitos) *"
+                    type="text"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={googleCode}
+                    onChange={(e) => setGoogleCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="text-center font-mono-tabular text-xl tracking-[0.4em] font-bold"
+                    required
+                  />
+
+                  <div className="flex items-center justify-between text-[11px] text-[#777873]">
+                    <button
+                      type="button"
+                      onClick={() => setGoogleCodeSent(false)}
+                      className="hover:underline text-[#4C6FFF] dark:text-[#C8FF45] font-semibold cursor-pointer"
+                    >
+                      ← Cambiar correo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendGoogleOtp}
+                      disabled={isGoogleSending}
+                      className="hover:underline text-[#4C6FFF] dark:text-[#C8FF45] font-semibold cursor-pointer"
+                    >
+                      {isGoogleSending ? 'Reenviando...' : 'Reenviar código'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsGoogleFlowOpen(false)}
+                      className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#090A0C] dark:text-[#F1F2EC] bg-white/80 dark:bg-[#1A1F2B] border border-[#090A0C]/20 dark:border-white/15 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isGoogleVerifying}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-xs sm:text-sm border border-[#84cc16] shadow-[0_3px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isGoogleVerifying ? 'Verificando código...' : 'Confirmar código e Ingresar'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

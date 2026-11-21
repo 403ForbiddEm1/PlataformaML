@@ -590,4 +590,143 @@ export const authService = {
     });
     return response.success;
   },
+
+  async sendGoogleCode(payload: {
+    email: string;
+    name?: string;
+    phone?: string;
+    password?: string;
+    modo?: 'login' | 'register';
+  }): Promise<{ mensaje: string; correo: string }> {
+    const response = await api.post<{ mensaje: string; correo: string }>('/auth/google/send-code', {
+      correo: payload.email.trim().toLowerCase(),
+      nombre: payload.name,
+      telefono: payload.phone,
+      clave: payload.password,
+      modo: payload.modo || 'login',
+    });
+    return response.data;
+  },
+
+  async verifyGoogleCode(payload: {
+    email: string;
+    code: string;
+    name?: string;
+    phone?: string;
+    password?: string;
+  }): Promise<{ user: User; token: string }> {
+    const response = await api.post<{ user: any; token: string }>('/auth/google/verify-code', {
+      correo: payload.email.trim().toLowerCase(),
+      codigo: payload.code.trim(),
+      nombre: payload.name,
+      telefono: payload.phone,
+      clave: payload.password,
+    });
+    const normalized = normalizeUser(response.data.user);
+    localStorage.setItem('nexo_auth_token', response.data.token);
+    localStorage.setItem('nexo_current_user', JSON.stringify(normalized));
+    if (normalized.phone && normalized.email) {
+      try {
+        const cleanEm = normalized.email.trim().toLowerCase();
+        localStorage.setItem(`nexo_candidate_tlg_${cleanEm}`, normalized.phone);
+        localStorage.removeItem(`nexo_candidate_tlg_unlinked_${cleanEm}`);
+      } catch {}
+    }
+    return { user: normalized, token: response.data.token };
+  },
+
+  async getGoogleChooserAccounts(): Promise<
+    Array<{ id: string; email: string; name: string; avatar: string; role: string }>
+  > {
+    try {
+      const response = await api.get<Array<{ id: string; email: string; name: string; avatar: string; role: string }>>(
+        '/auth/google/accounts',
+      );
+      return Array.isArray(response.data) ? response.data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async quickGoogleLogin(payload: { email: string; name?: string }): Promise<{ user: User; token: string }> {
+    const response = await api.post<{ user: any; token: string }>('/auth/google/quick-login', {
+      correo: payload.email.trim().toLowerCase(),
+      nombre: payload.name,
+    });
+    const normalized = normalizeUser(response.data.user);
+    localStorage.setItem('nexo_auth_token', response.data.token);
+    localStorage.setItem('nexo_current_user', JSON.stringify(normalized));
+    return { user: normalized, token: response.data.token };
+  },
+
+  async verifyEmailToken(token: string): Promise<{ message?: string }> {
+    const response = await api.post<{ message?: string }>('/auth/verify-email', { token });
+    return response.data || {};
+  },
+
+  async resetPasswordWithToken(payload: { token: string; password: string }): Promise<{ message?: string }> {
+    const response = await api.post<{ message?: string }>('/auth/reset-password', {
+      token: payload.token,
+      nuevaClave: payload.password,
+    });
+    return response.data || {};
+  },
+
+  async acceptInvitationToken(payload: {
+    token: string;
+    firstName: string;
+    lastName?: string;
+    password: string;
+    phone?: string;
+  }): Promise<{ user?: User; token?: string; message?: string }> {
+    const response = await api.post<{ user?: any; token?: string; message?: string }>('/auth/accept-invitation', {
+      token: payload.token,
+      nombre: payload.firstName.trim(),
+      apellido: payload.lastName?.trim() || undefined,
+      clave: payload.password,
+      telefono: payload.phone?.trim() || undefined,
+    });
+    if (response.data?.token && response.data?.user) {
+      const normalized = normalizeUser(response.data.user);
+      localStorage.setItem('nexo_auth_token', response.data.token);
+      localStorage.setItem('nexo_current_user', JSON.stringify(normalized));
+      return { user: normalized, token: response.data.token };
+    }
+    return response.data || {};
+  },
+
+  async sendPasswordSecurityCode(payload: {
+    canal: 'CORREO' | 'TELEGRAM';
+    email?: string;
+    phone?: string;
+    userId?: string;
+  }): Promise<{ mensaje: string; canal: 'CORREO' | 'TELEGRAM'; destino: string }> {
+    const response = await api.post<{ mensaje: string; canal: 'CORREO' | 'TELEGRAM'; destino: string }>(
+      '/auth/password-code/send',
+      {
+        canal: payload.canal,
+        correo: payload.email?.trim().toLowerCase() || undefined,
+        telefono: payload.phone?.trim() || undefined,
+        usuarioId: payload.userId || undefined,
+      },
+    );
+    return response.data;
+  },
+
+  async verifyPasswordSecurityCode(payload: {
+    code: string;
+    newPassword: string;
+    email?: string;
+    phone?: string;
+    userId?: string;
+  }): Promise<{ mensaje: string }> {
+    const response = await api.post<{ mensaje: string }>('/auth/password-code/verify', {
+      codigo: payload.code.trim(),
+      nuevaClave: payload.newPassword,
+      correo: payload.email?.trim().toLowerCase() || undefined,
+      telefono: payload.phone?.trim() || undefined,
+      usuarioId: payload.userId || undefined,
+    });
+    return response.data;
+  },
 };

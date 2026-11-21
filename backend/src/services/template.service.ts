@@ -72,7 +72,8 @@ export const templateService = {
     canal: CanalNotificacion;
   }): Promise<{ asunto: string | null; cuerpo: string; nombreExterno?: string | null } | null> {
     const { empresaId, evento, canal } = params;
-    const requiereAprobacion = canal === CanalNotificacion.WHATSAPP;
+    // El canal de mensajería instantánea ahora es Telegram: no requiere aprobación previa de plantillas
+    const requiereAprobacion = false;
 
     if (empresaId) {
       const deEmpresa = await prisma.plantillaNotificacion.findFirst({
@@ -140,17 +141,13 @@ export const templateService = {
     });
 
     const nuevaVersion = (ultima?.version ?? 0) + 1;
-    const esWhatsapp = datos.canal === CanalNotificacion.WHATSAPP;
 
-    // En Correo y APP desactivamos la anterior y la nueva queda activa de inmediato.
-    // En WhatsApp queda PENDIENTE hasta que Meta la apruebe.
+    // Correo, APP y Telegram (canal de mensajería): la nueva versión queda activa de inmediato.
     const creada = await prisma.$transaction(async (tx) => {
-      if (!esWhatsapp) {
-        await tx.plantillaNotificacion.updateMany({
-          where: { empresaId: actor.empresaId, evento: datos.evento, canal: datos.canal, activa: true },
-          data: { activa: false },
-        });
-      }
+      await tx.plantillaNotificacion.updateMany({
+        where: { empresaId: actor.empresaId, evento: datos.evento, canal: datos.canal, activa: true },
+        data: { activa: false },
+      });
 
       return tx.plantillaNotificacion.create({
         data: {
@@ -160,12 +157,8 @@ export const templateService = {
           asunto: datos.asunto ?? null,
           cuerpo: datos.cuerpo,
           version: nuevaVersion,
-          estadoAprobacion: esWhatsapp
-            ? EstadoAprobacionPlantilla.PENDIENTE
-            : EstadoAprobacionPlantilla.NO_APLICA,
-          nombreExterno: esWhatsapp
-            ? `${datos.evento.toLowerCase()}_v${nuevaVersion}`
-            : null,
+          estadoAprobacion: EstadoAprobacionPlantilla.NO_APLICA,
+          nombreExterno: null,
           activa: true,
         },
       });

@@ -12,6 +12,7 @@ import { CompanyAdminDashboardPage } from '@/pages/CompanyAdminDashboard/Company
 import { VacanciesCatalogPage } from '@/pages/VacanciesCatalog/VacanciesCatalogPage';
 import { AmbientBackground } from '@/components/layout/AmbientBackground';
 import { StatsLoaderOverlay } from '@/components/ui/StatsLoaderOverlay';
+import { TokenActionModal, type EmailTokenAction } from '@/components/auth/TokenActionModal';
 import { Vacancy, UserRole } from '@/types';
 
 interface LoaderOverlayState {
@@ -26,6 +27,17 @@ const MainApp: React.FC = () => {
   // Navigation state (Starts at Vacancies Catalog or Login)
   const [currentView, setCurrentView] = useState<string>('vacancies');
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
+  const [emailTokenAction, setEmailTokenAction] = useState<EmailTokenAction>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token')?.trim();
+    if (!token) return null;
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes('verify-email')) return { type: 'verify-email', token };
+    if (path.includes('reset-password')) return { type: 'reset-password', token };
+    if (path.includes('accept-invitation')) return { type: 'accept-invitation', token };
+    return null;
+  });
   const [loaderState, setLoaderState] = useState<LoaderOverlayState>({
     mounted: false,
     exiting: false,
@@ -136,6 +148,19 @@ const MainApp: React.FC = () => {
         mode={loaderState.mode}
       />
 
+      {/* Email link handler (?token= for verify-email, reset-password, accept-invitation) */}
+      <TokenActionModal
+        action={emailTokenAction}
+        onClose={() => {
+          setEmailTokenAction(null);
+          if (typeof window !== 'undefined' && window.location.search) {
+            window.history.replaceState({}, '', '/');
+          }
+        }}
+        onAuthenticated={handleLoginSuccess}
+        onGoToLogin={() => handleNavigate('login')}
+      />
+
       {/* Screen Renderer (Pauses entrance animations until loader begins fading out) */}
       <div
         key={currentView}
@@ -188,7 +213,7 @@ const MainApp: React.FC = () => {
           <CompanyAdminDashboardPage onNavigate={handleNavigate} />
         )}
 
-        {currentView === 'vacancies' && (
+        {(currentView === 'vacancies' || currentView === 'home') && (
           <VacanciesCatalogPage
             onNavigate={handleNavigate}
             onSelectVacancy={handleApplyToVacancy}

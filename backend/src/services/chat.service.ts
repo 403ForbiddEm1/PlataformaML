@@ -46,6 +46,19 @@ async function verificarAccesoConversacion(actor: Actor, conversacionId: string)
   return conv;
 }
 
+async function empresaTieneTelegramVinculado(empresaId: string): Promise<boolean> {
+  const sesion = await prisma.registroAuditoria
+    .findFirst({
+      where: {
+        empresaId,
+        accion: 'EMPRESA_TELEGRAM_SESION',
+      },
+      select: { id: true },
+    })
+    .catch(() => null);
+  return Boolean(sesion);
+}
+
 export const chatService = {
   async listarConversaciones(actor: Actor) {
     const where =
@@ -59,7 +72,15 @@ export const chatService = {
       where,
       include: {
         empresa: { select: { id: true, nombre: true } },
-        candidato: { select: { id: true, nombre: true, apellido: true } },
+        candidato: {
+          select: {
+            id: true,
+            nombre: true,
+            apellido: true,
+            telefono: true,
+            consentimientoWhatsappEn: true,
+          },
+        },
         postulacion: {
           select: {
             id: true,
@@ -82,16 +103,21 @@ export const chatService = {
       orderBy: { ultimoMensajeEn: 'desc' },
     });
 
-    // Contar no leídos del otro participante
+    // Contar no leídos del otro participante y verificar estado de vinculación Telegram
     const resultado = await Promise.all(
       conversaciones.map(async (c) => {
-        const noLeidos = await prisma.mensaje.count({
-          where: {
-            conversacionId: c.id,
-            autorId: { not: actor.id },
-            leidoEn: null,
-          },
-        });
+        const [noLeidos, empresaTlg] = await Promise.all([
+          prisma.mensaje.count({
+            where: {
+              conversacionId: c.id,
+              autorId: { not: actor.id },
+              leidoEn: null,
+            },
+          }),
+          empresaTieneTelegramVinculado(c.empresaId),
+        ]);
+
+        const candidatoTlg = Boolean(c.candidato.telefono && c.candidato.consentimientoWhatsappEn !== null);
 
         return {
           id: c.id,
@@ -105,6 +131,7 @@ export const chatService = {
           ultimoMensajeEn: c.ultimoMensajeEn,
           cerradaEn: c.cerradaEn,
           noLeidos,
+          telegramVinculado: empresaTlg && candidatoTlg,
         };
       }),
     );
@@ -113,9 +140,12 @@ export const chatService = {
   },
 
   async listarMensajes(actor: Actor, conversacionId: string, despues?: Date) {
-    await verificarAccesoConversacion(actor, conversacionId);
+    const conv = await verificarAccesoConversacion(actor, conversacionId);
+    const empresaTlg = await empresaTieneTelegramVinculado(conv.empresaId);
+    const candidatoTlg = Boolean(conv.candidato.telefono && conv.candidato.consentimientoWhatsappEn !== null);
+    const tlgActivo = empresaTlg && candidatoTlg;
 
-    return prisma.mensaje.findMany({
+    const mensajes = await prisma.mensaje.findMany({
       where: {
         conversacionId,
         ...(despues ? { creadoEn: { gt: despues } } : {}),
@@ -126,6 +156,11 @@ export const chatService = {
       orderBy: { creadoEn: 'asc' },
       take: 200,
     });
+
+    return mensajes.map((m) => ({
+      ...m,
+      canalEnvio: tlgActivo && m.autor.rol !== Rol.CANDIDATO ? ('TELEGRAM' as const) : ('WEB' as const),
+    }));
   },
 
   async enviarMensaje(actor: Actor, conversacionId: string, contenido: string) {
@@ -136,6 +171,10 @@ export const chatService = {
 
     const textoLimpio = contenido.trim();
     if (!textoLimpio) throw new HttpError(400, 'El mensaje no puede estar vacío');
+
+    const empresaTlg = await empresaTieneTelegramVinculado(conv.empresaId);
+    const candidatoTlg = Boolean(conv.candidato.telefono && conv.candidato.consentimientoWhatsappEn !== null);
+    const telegramVinculado = empresaTlg && candidatoTlg;
 
     const ahora = new Date();
     const mensaje = await prisma.$transaction(async (tx) => {
@@ -155,7 +194,7 @@ export const chatService = {
         data: { ultimoMensajeEn: ahora },
       });
 
-      // Si escribe la empresa, notificar al candidato
+      // Si escribe la empresa, notificar al candidato (solo incluye Telegram si está vinculado)
       if (actor.rol !== Rol.CANDIDATO) {
         await notificationService.encolar(
           {
@@ -164,8 +203,8 @@ export const chatService = {
             empresaId: conv.empresaId,
             postulacionId: conv.postulacionId,
             destinatarioCorreo: conv.candidato.correo,
-            destinatarioTelefono: conv.candidato.telefono,
-            consentimientoWhatsapp: !!conv.candidato.consentimientoWhatsappEn,
+            destinatarioTelefono: telegramVinculado ? conv.candidato.telefono : null,
+            consentimientoWhatsapp: telegramVinculado,
             variables: {
               nombre: conv.candidato.nombre,
               empresa: conv.empresa.nombre,
@@ -179,12 +218,14 @@ export const chatService = {
       return m;
     });
 
-    // Si escribe alguien de la empresa (RRHH o ADMIN), enviar el mensaje directo al Telegram del candidato
-    // con la firma: "— Nombre Apellido · Rol (Empresa)"
-    if (actor.rol !== Rol.CANDIDATO) {
+    let canalEnvio: 'WEB' | 'TELEGRAM' = 'WEB';
+
+    // Solo enviar a Telegram si tanto la empresa como el candidato tienen Telegram vinculado.
+    // Si Telegram no está vinculado, se limita a enviarse por la web y dirá "Enviado desde web".
+    if (actor.rol !== Rol.CANDIDATO && telegramVinculado) {
       const autorNombreCompleto = `${mensaje.autor.nombre} ${mensaje.autor.apellido}`.trim();
-      telegramService
-        .enviarMensajeChatFirmado({
+      try {
+        const resTlg = await telegramService.enviarMensajeChatFirmado({
           candidatoId: conv.candidato.id,
           candidatoTelefono: conv.candidato.telefono,
           contenido: textoLimpio,
@@ -195,14 +236,22 @@ export const chatService = {
           conversacionId: conv.id,
           empresaId: conv.empresaId,
           postulacionId: conv.postulacionId,
-        })
-        .catch(() => {});
+        });
+        if (resTlg.success) {
+          canalEnvio = 'TELEGRAM';
+        }
+      } catch {
+        canalEnvio = 'WEB';
+      }
     }
 
     // Disparar worker sin bloquear la respuesta
     notificationService.procesarCola().catch(() => {});
 
-    return mensaje;
+    return {
+      ...mensaje,
+      canalEnvio,
+    };
   },
 
   async marcarLeidos(actor: Actor, conversacionId: string) {
