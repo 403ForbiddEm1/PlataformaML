@@ -11,7 +11,7 @@ import { prisma } from '../config/database';
 import { renderizar } from '../utils/plantilla';
 import { templateService } from './template.service';
 import { emailService } from './email.service';
-import { whatsappService } from './whatsapp.service';
+import { telegramService } from './telegram.service';
 
 export interface EncolarNotificacionParams {
   evento: EventoNotificacion;
@@ -105,6 +105,9 @@ export const notificationService = {
         canal: { in: [CanalNotificacion.CORREO, CanalNotificacion.WHATSAPP] },
         proximoIntentoEn: { lte: ahora },
       },
+      include: {
+        empresa: { select: { nombre: true, correoContacto: true } },
+      },
       orderBy: { proximoIntentoEn: 'asc' },
       take: limite,
     });
@@ -130,17 +133,22 @@ export const notificationService = {
             to: notif.destinatario,
             subject: notif.asunto || 'Notificación de la Plataforma',
             text: notif.mensaje,
+            senderName: notif.empresa?.nombre || undefined,
+            replyTo: notif.empresa?.correoContacto || undefined,
           });
           exito = res.success;
           if (!exito) errorMsg = res.error || 'Error SMTP';
         } else if (notif.canal === CanalNotificacion.WHATSAPP) {
-          const res = await whatsappService.sendDirect({
-            to: notif.destinatario,
-            message: notif.mensaje,
+          // Envía la notificación desde la cuenta de Telegram propia de la empresa
+          const res = await telegramService.sendDirect({
+            empresaId: notif.empresaId,
+            usuarioId: notif.usuarioId,
+            toFallback: notif.destinatario,
+            message: notif.asunto ? `📌 ${notif.asunto}\n\n${notif.mensaje}` : notif.mensaje,
           });
           exito = res.success;
           idExterno = res.externalId;
-          if (!exito) errorMsg = res.error || 'Error WhatsApp API';
+          if (!exito) errorMsg = res.error || 'Error Telegram API';
         }
       } catch (err: any) {
         exito = false;

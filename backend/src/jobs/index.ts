@@ -1,6 +1,7 @@
 // src/jobs/index.ts
 // Orquestador de trabajos en segundo plano (notificaciones, empresas inactivas y limpieza).
 import { notificationService } from '../services/notification.service';
+import { telegramService } from '../services/telegram.service';
 import { ejecutarRevisionEmpresas } from './empresas.job';
 import { ejecutarLimpiezaTokens } from './limpieza.job';
 
@@ -8,6 +9,9 @@ let intervalos: NodeJS.Timeout[] = [];
 
 export function iniciarJobs(): void {
   if (process.env.NODE_ENV === 'test') return;
+
+  // Iniciar sincronización bidireccional con Telegram Bot API (si TELEGRAM_BOT_TOKEN está en .env)
+  telegramService.iniciarPolling();
 
   // Ejecutar una pasada inicial sin bloquear el arranque
   notificationService.procesarCola().catch(() => {});
@@ -31,6 +35,7 @@ export function iniciarJobs(): void {
 }
 
 export function detenerJobs(): void {
+  telegramService.detenerPolling();
   for (const t of intervalos) clearInterval(t);
   intervalos = [];
 }

@@ -140,7 +140,7 @@ export interface CandidateProfile {
 export interface NotificationItem {
   id: string;
   recipient: string;
-  channel: 'WhatsApp' | 'Email';
+  channel: 'Telegram' | 'WhatsApp' | 'Email';
   title: string;
   message: string;
   timestamp: string;

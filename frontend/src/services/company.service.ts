@@ -64,5 +64,44 @@ export const companyService = {
     const response = await api.patch<CompanyMemberDto>(`/company/members/${memberId}`, { activo });
     return response.data;
   },
+
+  async getTelegramStatus(): Promise<{
+    conectado: boolean;
+    apiConfigurada: boolean;
+    telefono: string | null;
+    username: string | null;
+    nombreCuenta: string | null;
+    vinculadoEn?: string | null;
+  }> {
+    const response = await api.get<{
+      conectado: boolean;
+      apiConfigurada: boolean;
+      telefono: string | null;
+      username: string | null;
+      nombreCuenta: string | null;
+      vinculadoEn?: string | null;
+    }>('/company/telegram/status');
+    return response.data;
+  },
+
+  async sendTelegramCode(telefono: string): Promise<{ mensaje: string; telefono: string }> {
+    const response = await api.post<{ mensaje: string; telefono: string }>('/company/telegram/send-code', {
+      telefono,
+    });
+    return response.data;
+  },
+
+  async verifyTelegramCode(
+    codigo: string,
+    password2FA?: string,
+  ): Promise<{ conectado: boolean; telefono: string; username: string | null; nombreCuenta: string }> {
+    const response = await api.post<{
+      conectado: boolean;
+      telefono: string;
+      username: string | null;
+      nombreCuenta: string;
+    }>('/company/telegram/verify-code', { codigo, password2FA });
+    return response.data;
+  },
 };
 

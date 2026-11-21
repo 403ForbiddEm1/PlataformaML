@@ -52,8 +52,27 @@ export const chatService = {
     return response.data;
   },
 
-  async markAsRead(conversationId: string): Promise<{ actualizados: number }> {
-    const response = await api.patch<{ actualizados: number }>(`/chat/conversations/${conversationId}/read`);
+  async markAsRead(conversationId: string): Promise<{ marcados: number }> {
+    const response = await api.patch<{ marcados: number }>(`/conversations/${conversationId}/read`);
+    return response.data;
+  },
+
+  async getTelegramLink(): Promise<{
+    botOnline: boolean;
+    botUsername: string | null;
+    vinculado: boolean;
+    chatId: string | null;
+    deepLink: string | null;
+    comandoManual: string;
+  }> {
+    const response = await api.get<{
+      botOnline: boolean;
+      botUsername: string | null;
+      vinculado: boolean;
+      chatId: string | null;
+      deepLink: string | null;
+      comandoManual: string;
+    }>('/conversations/telegram-link');
     return response.data;
   },
 };

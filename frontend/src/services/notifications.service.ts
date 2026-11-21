@@ -4,7 +4,7 @@ import { mockStore } from './mockData';
 
 export interface SendNotificationPayload {
   recipient: string;
-  channel: 'WhatsApp' | 'Email';
+  channel: 'Telegram' | 'WhatsApp' | 'Email';
   title: string;
   message: string;
   relatedApplicationId?: string;

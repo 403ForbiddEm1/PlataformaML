@@ -125,7 +125,7 @@ export interface CandidateProfileResponse {
 export interface NotificationItemResponse {
   id: string;
   recipient: string;
-  channel: 'WhatsApp' | 'Email';
+  channel: 'Telegram' | 'WhatsApp' | 'Email';
   title: string;
   message: string;
   timestamp: string;

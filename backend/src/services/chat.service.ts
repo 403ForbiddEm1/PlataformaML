@@ -6,6 +6,7 @@ import { EventoNotificacion, Rol } from '@prisma/client';
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/http-error';
 import { notificationService } from './notification.service';
+import { telegramService } from './telegram.service';
 import type { Actor } from './company.service';
 
 async function verificarAccesoConversacion(actor: Actor, conversacionId: string) {
@@ -177,6 +178,26 @@ export const chatService = {
 
       return m;
     });
+
+    // Si escribe alguien de la empresa (RRHH o ADMIN), enviar el mensaje directo al Telegram del candidato
+    // con la firma: "— Nombre Apellido · Rol (Empresa)"
+    if (actor.rol !== Rol.CANDIDATO) {
+      const autorNombreCompleto = `${mensaje.autor.nombre} ${mensaje.autor.apellido}`.trim();
+      telegramService
+        .enviarMensajeChatFirmado({
+          candidatoId: conv.candidato.id,
+          candidatoTelefono: conv.candidato.telefono,
+          contenido: textoLimpio,
+          autorNombreCompleto,
+          autorRol: mensaje.autor.rol,
+          empresaNombre: conv.empresa.nombre,
+          vacanteTitulo: conv.postulacion?.vacante.titulo ?? 'Vacante',
+          conversacionId: conv.id,
+          empresaId: conv.empresaId,
+          postulacionId: conv.postulacionId,
+        })
+        .catch(() => {});
+    }
 
     // Disparar worker sin bloquear la respuesta
     notificationService.procesarCola().catch(() => {});

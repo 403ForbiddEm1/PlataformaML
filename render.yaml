@@ -1,0 +1,50 @@
+services:
+  # 1. Microservicio de Machine Learning (FastAPI Python)
+  - type: web
+    name: plataforma-ml-service
+    runtime: python
+    rootDir: ml-service
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m app.models.train
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: ML_THRESHOLD
+        value: "0.5"
+      - key: ML_API_KEY
+        sync: false
+
+  # 2. Backend API REST (Node.js + Express + Prisma + Telegram)
+  - type: web
+    name: plataforma-ml-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: FRONTEND_URL
+        value: http://localhost:5173
+      - key: ML_SERVICE_URL
+        sync: false
+      - key: ML_API_KEY
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: GMAIL_SCRIPT_URL
+        sync: false

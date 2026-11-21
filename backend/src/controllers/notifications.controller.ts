@@ -7,7 +7,7 @@ import { sendNotificationSchema } from '../validators/notification.validator';
 import { NotificationItemResponse } from '../types';
 import { CanalNotificacion, EstadoNotificacion, Rol } from '@prisma/client';
 import { emailService } from '../services/email.service';
-import { whatsappService } from '../services/whatsapp.service';
+import { telegramService } from '../services/telegram.service';
 
 export const notificationsController = {
   async getNotifications(req: Request, res: Response, next: NextFunction) {
@@ -85,16 +85,24 @@ export const notificationsController = {
 
       let recordId: string | undefined;
 
-      if (body.channel === 'WhatsApp') {
-        const result = await whatsappService.sendWhatsApp({
-          to: body.recipient,
-          message: body.message,
-          usuarioId: targetUserId,
+      if (body.channel === 'WhatsApp' || (body.channel as string) === 'Telegram') {
+        const emisor = await prisma.usuario.findUnique({
+          where: { id: user.id },
+          include: { empresa: { select: { nombre: true } } },
+        });
+        const autorNombreCompleto = emisor ? `${emisor.nombre} ${emisor.apellido}`.trim() : 'Talento Humano';
+        await telegramService.enviarMensajeChatFirmado({
+          candidatoId: targetUserId,
+          candidatoTelefono: body.recipient,
+          contenido: body.message,
+          autorNombreCompleto,
+          autorRol: user.rol,
+          empresaNombre: emisor?.empresa?.nombre || 'Empresa',
+          vacanteTitulo: body.title,
+          conversacionId: body.relatedApplicationId || 'manual',
           empresaId: user.empresaId,
           postulacionId: body.relatedApplicationId,
-          tipo: 'MENSAJE_MANUAL',
         });
-        recordId = result.id;
       } else {
         const result = await emailService.sendEmail({
           to: body.recipient,

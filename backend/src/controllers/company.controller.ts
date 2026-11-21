@@ -5,6 +5,7 @@ import { CanalNotificacion, EventoNotificacion } from '@prisma/client';
 import { HttpError } from '../utils/http-error';
 import * as companyService from '../services/company.service';
 import { templateService } from '../services/template.service';
+import { telegramService } from '../services/telegram.service';
 import { prisma } from '../config/database';
 
 const actualizarEmpresaSchema = z
@@ -139,6 +140,51 @@ export const companyController = {
         take: 100,
       });
       res.json({ success: true, data: logs });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async telegramStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actor = actorDe(req);
+      if (!actor.empresaId) throw new HttpError(403, 'Acceso denegado');
+      const data = await telegramService.obtenerEstadoTelegramEmpresa(actor.empresaId);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async telegramSendCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actor = actorDe(req);
+      if (!actor.empresaId) throw new HttpError(403, 'Acceso denegado');
+      const { telefono } = z.object({ telefono: z.string().min(6) }).parse(req.body);
+      const data = await telegramService.solicitarCodigoVinculacionEmpresa(actor.empresaId, telefono);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async telegramVerifyCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actor = actorDe(req);
+      if (!actor.empresaId) throw new HttpError(403, 'Acceso denegado');
+      const { codigo, password2FA } = z
+        .object({
+          codigo: z.string().min(3),
+          password2FA: z.string().optional(),
+        })
+        .parse(req.body);
+      const data = await telegramService.confirmarCodigoVinculacionEmpresa(
+        actor.empresaId,
+        actor.id,
+        codigo,
+        password2FA,
+      );
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }

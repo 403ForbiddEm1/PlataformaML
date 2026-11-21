@@ -26,7 +26,20 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      // Permitir peticiones sin origin (Postman, curl, SSR, mobile)
+      if (!origin) return callback(null, true);
+      const allowedList = env.FRONTEND_URL.split(',').map((u) => u.trim());
+      if (
+        allowedList.includes(origin) ||
+        origin === 'http://localhost:5173' ||
+        origin === 'http://127.0.0.1:5173' ||
+        origin.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   }),
 );
@@ -65,6 +78,7 @@ app.use('/api/ml', mlRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/company', companyRouter);
 app.use('/api/conversations', chatRouter);
+app.use('/api/chat', chatRouter);
 app.use('/api/webhooks', webhooksRouter);
 
 // Manejo de errores y 404
