@@ -72,3 +72,4 @@ pnpm-debug.log*
 .devin/
 .windsurf/
 skills-lock.json
+.neon
