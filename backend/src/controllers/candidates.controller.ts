@@ -238,11 +238,15 @@ export const candidatesController = {
           extracted = await analizarArchivoCv(file.path);
 
           let totalExpYears = 0;
+          const currentYear = new Date().getFullYear();
           if (extracted.experience && extracted.experience.length > 0) {
             for (const exp of extracted.experience) {
               const years = exp.period?.match(/\d{4}/g);
+              const isPresent = /presente|actualidad|actual|hoy|present|current/i.test(exp.period || '');
               if (years && years.length >= 2) {
                 totalExpYears += Math.max(1, parseInt(years[1]) - parseInt(years[0]));
+              } else if (years && years.length === 1 && isPresent) {
+                totalExpYears += Math.max(1, currentYear - parseInt(years[0]));
               } else {
                 totalExpYears += 1;
               }
@@ -252,8 +256,8 @@ export const candidatesController = {
           await prisma.perfilCandidato.update({
             where: { id: perfil.id },
             data: {
-              ...(extracted.title ? { titulo: extracted.title } : {}),
-              ...(extracted.bio ? { biografia: extracted.bio } : {}),
+              titulo: extracted.title || null,
+              biografia: extracted.bio || null,
               ...(extracted.location ? { ubicacion: extracted.location } : {}),
               habilidades: extracted.skills || [],
               textoExtraido: extracted.texto || null,
@@ -261,6 +265,14 @@ export const candidatesController = {
               actualizadoEn: new Date(),
             },
           });
+
+          // Si el usuario no tenía teléfono registrado y el CV lo contiene, lo guardamos
+          if (extracted.phone) {
+            const usrActual = await prisma.usuario.findUnique({ where: { id: userId }, select: { telefono: true } });
+            if (!usrActual?.telefono) {
+              await prisma.usuario.update({ where: { id: userId }, data: { telefono: extracted.phone } });
+            }
+          }
 
           await prisma.educacionCandidato.deleteMany({ where: { perfilId: perfil.id } });
           if (Array.isArray(extracted.education) && extracted.education.length > 0) {
