@@ -33,7 +33,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: FRONTEND_URL
-        value: http://localhost:5173
+        value: https://plataforma-ml.vercel.app
       - key: ML_SERVICE_URL
         sync: false
       - key: ML_API_KEY

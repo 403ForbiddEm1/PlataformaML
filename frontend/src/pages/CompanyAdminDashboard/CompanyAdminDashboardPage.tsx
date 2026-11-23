@@ -59,6 +59,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
 
   const [activeTab, setActiveTab] = useState<'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile'>('metrics');
   const [profileDrawerApp, setProfileDrawerApp] = useState<Application | null>(null);
+  const [focusChatAppId, setFocusChatAppId] = useState<string | undefined>(undefined);
 
   // Local data filtered for this specific company (Tenant Isolation)
   const currentEmpresaId = user?.empresaId || user?.companyId || '';
@@ -891,6 +892,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                       <th className="px-6 py-4">Estado en la Empresa</th>
                       <th className="px-6 py-4">Contacto</th>
                       <th className="px-6 py-4">Fecha Postulación</th>
+                      <th className="px-6 py-4 text-right">Acciones / Chat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/50 dark:divide-white/10">
@@ -942,6 +944,21 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                         <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-[11px]">
                           {app.appliedDate}
                         </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFocusChatAppId(app.id);
+                              setActiveTab('messages');
+                            }}
+                            className="press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0B5D46] hover:bg-[#094B38] text-white dark:bg-[#C8FF45] dark:hover:bg-[#d5ff6b] dark:text-[#090A0C] cursor-pointer shadow-xs"
+                            title="Abrir chat con este postulante"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Chatear</span>
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -962,7 +979,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                   Supervisa o participa directamente en las conversaciones por postulación vinculadas al Telegram corporativo.
                 </p>
               </div>
-              <ChatPanel />
+              <ChatPanel focusApplicationId={focusChatAppId} />
             </div>
           )}
 
@@ -1126,7 +1143,9 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
         isOpen={Boolean(profileDrawerApp)}
         onClose={() => setProfileDrawerApp(null)}
         application={profileDrawerApp}
-        onOpenChat={() => {
+        onOpenChat={(app) => {
+          setProfileDrawerApp(null);
+          setFocusChatAppId(app.id);
           setActiveTab('messages');
         }}
       />

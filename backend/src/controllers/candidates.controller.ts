@@ -102,9 +102,19 @@ export const candidatesController = {
 
       // Actualizar datos del usuario si se enviaron (teléfono, nombre, apellido)
       const userUpdate: any = {};
-      if (body.phone !== undefined) userUpdate.telefono = body.phone;
+      if (body.phone !== undefined) {
+        userUpdate.telefono = body.phone;
+        if (body.phone && body.phone.trim().length >= 5 && body.telegramLinked !== false) {
+          userUpdate.consentimientoWhatsappEn = new Date();
+        }
+      }
       if (body.firstName !== undefined) userUpdate.nombre = body.firstName;
       if (body.lastName !== undefined) userUpdate.apellido = body.lastName;
+      if (body.telegramLinked === true) {
+        userUpdate.consentimientoWhatsappEn = new Date();
+      } else if (body.telegramLinked === false) {
+        userUpdate.consentimientoWhatsappEn = null;
+      }
 
       if (Object.keys(userUpdate).length > 0) {
         await prisma.usuario.update({

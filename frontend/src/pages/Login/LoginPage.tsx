@@ -248,14 +248,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     if (origin === 'login') {
       setIsLoadingGoogleAccounts(true);
       try {
-        const dbAccs = await authService.getGoogleChooserAccounts();
-        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
-        const savedAccs: Array<{ id: string; email: string; name: string; avatar: string }> = savedRaw
-          ? JSON.parse(savedRaw)
-          : [];
+        // Por privacidad: NUNCA mostrar correos de otras personas de la base de datos.
+        // Solo mostrar las cuentas que el propio usuario haya verificado y guardado en SU dispositivo.
+        localStorage.removeItem('nexo_saved_google_accounts');
+        const savedRaw = localStorage.getItem('nexo_my_verified_google_accounts');
+        const savedAccs: Array<{ id: string; email: string; name: string; avatar: string; verified?: boolean }> =
+          savedRaw ? JSON.parse(savedRaw) : [];
         const byEmail = new Map<string, { id: string; email: string; name: string; avatar: string }>();
 
-        for (const s of [...savedAccs, ...dbAccs]) {
+        for (const s of savedAccs) {
           const em = (s.email || '').toLowerCase().trim();
           if (em && !byEmail.has(em)) {
             byEmail.set(em, {
@@ -266,35 +267,77 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             });
           }
         }
-        setGoogleAccounts(Array.from(byEmail.values()));
+        const list = Array.from(byEmail.values());
+        setGoogleAccounts(list);
+        if (list.length === 0) {
+          setIsAddingOtherGoogle(true);
+        }
       } finally {
         setIsLoadingGoogleAccounts(false);
       }
     }
   };
 
+  const handleRemoveSavedGoogleAccount = (emailToRemove: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const savedRaw = localStorage.getItem('nexo_my_verified_google_accounts');
+      const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
+      const filtered = savedAccs.filter(
+        (a) => (a.email || '').toLowerCase().trim() !== emailToRemove.toLowerCase().trim(),
+      );
+      localStorage.setItem('nexo_my_verified_google_accounts', JSON.stringify(filtered));
+      setGoogleAccounts(filtered);
+      if (filtered.length === 0) {
+        setIsAddingOtherGoogle(true);
+      }
+    } catch {}
+  };
+
   const handleSelectGoogleAccount = async (acc: { email: string; name?: string }) => {
+    // Si la cuenta ya fue verificada previamente por el propio usuario en este dispositivo, ingresa directo.
+    // Si es un correo nuevo o de otra persona no verificada en este navegador, exige código de 6 dígitos al correo.
+    const cleanEm = acc.email.trim().toLowerCase();
+    let isVerifiedOnThisDevice = false;
+    try {
+      const savedRaw = localStorage.getItem('nexo_my_verified_google_accounts');
+      const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
+      isVerifiedOnThisDevice = savedAccs.some(
+        (a) => (a.email || '').toLowerCase().trim() === cleanEm && a.verified === true,
+      );
+    } catch {}
+
+    if (!isVerifiedOnThisDevice) {
+      setGoogleEmail(cleanEm);
+      setGoogleName(acc.name || '');
+      setIsGoogleSending(true);
+      try {
+        const res = await authService.sendGoogleCode({
+          email: cleanEm,
+          name: acc.name || undefined,
+          modo: 'login',
+        });
+        setGoogleCodeSent(true);
+        setGoogleFlowOrigin('register'); // Muestra el paso de código de 6 dígitos
+        showToast(
+          'Verificación de seguridad requerida',
+          res.mensaje || `Enviamos un código de 6 dígitos a ${cleanEm} para confirmar que es tu cuenta.`,
+          'info',
+        );
+      } catch (err: any) {
+        showToast('Error al enviar código', err?.message || 'Verifica el correo ingresado.', 'error');
+      } finally {
+        setIsGoogleSending(false);
+      }
+      return;
+    }
+
     setIsGoogleVerifying(true);
     try {
       const { user: loggedUser } = await authService.quickGoogleLogin({
         email: acc.email,
         name: acc.name,
       });
-      // Guardar en cuentas recordadas del navegador para próximas sesiones
-      try {
-        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
-        const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
-        const exists = savedAccs.some((a) => a.email?.toLowerCase() === loggedUser.email.toLowerCase());
-        if (!exists) {
-          savedAccs.unshift({
-            id: loggedUser.id,
-            email: loggedUser.email,
-            name: loggedUser.name,
-            avatar: loggedUser.avatar || loggedUser.name.slice(0, 2).toUpperCase(),
-          });
-          localStorage.setItem('nexo_saved_google_accounts', JSON.stringify(savedAccs.slice(0, 6)));
-        }
-      } catch {}
 
       setSessionUser(loggedUser);
       showToast('¡Bienvenido(a)!', `Sesión iniciada con Google como ${loggedUser.name}.`, 'success');
@@ -347,20 +390,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         password: googlePassword || undefined,
       });
       setSessionUser(verifiedUser);
-      // Guardar cuenta verificada en el selector de Google del navegador
+      // Guardar cuenta verificada por código únicamente en el navegador de este usuario
       try {
-        const savedRaw = localStorage.getItem('nexo_saved_google_accounts');
+        const savedRaw = localStorage.getItem('nexo_my_verified_google_accounts');
         const savedAccs: any[] = savedRaw ? JSON.parse(savedRaw) : [];
-        const exists = savedAccs.some((a) => a.email?.toLowerCase() === verifiedUser.email.toLowerCase());
-        if (!exists) {
-          savedAccs.unshift({
-            id: verifiedUser.id,
-            email: verifiedUser.email,
-            name: verifiedUser.name,
-            avatar: verifiedUser.avatar || verifiedUser.name.slice(0, 2).toUpperCase(),
-          });
-          localStorage.setItem('nexo_saved_google_accounts', JSON.stringify(savedAccs.slice(0, 6)));
-        }
+        const filtered = savedAccs.filter(
+          (a) => (a.email || '').toLowerCase() !== verifiedUser.email.toLowerCase(),
+        );
+        filtered.unshift({
+          id: verifiedUser.id,
+          email: verifiedUser.email,
+          name: verifiedUser.name,
+          avatar: verifiedUser.avatar || verifiedUser.name.slice(0, 2).toUpperCase(),
+          verified: true,
+        });
+        localStorage.setItem('nexo_my_verified_google_accounts', JSON.stringify(filtered.slice(0, 6)));
       } catch {}
       showToast(
         '¡Correo confirmado con éxito!',
@@ -1242,12 +1286,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           </div>
                         ) : googleAccounts.length > 0 ? (
                           googleAccounts.map((acc) => (
-                            <button
+                            <div
                               key={acc.email}
-                              type="button"
-                              disabled={isGoogleVerifying}
-                              onClick={() => handleSelectGoogleAccount(acc)}
-                              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#4C6FFF]/8 dark:hover:bg-[#C8FF45]/10 transition-colors text-left cursor-pointer disabled:opacity-50"
+                              onClick={() => !isGoogleVerifying && handleSelectGoogleAccount(acc)}
+                              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[#4C6FFF]/8 dark:hover:bg-[#C8FF45]/10 transition-colors text-left cursor-pointer"
                             >
                               <div className="w-9 h-9 rounded-full bg-[#4C6FFF] dark:bg-[#C8FF45] text-white dark:text-[#090A0C] font-heading font-bold text-xs flex items-center justify-center shrink-0">
                                 {acc.avatar}
@@ -1260,8 +1302,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                                   {acc.email}
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={(e) => handleRemoveSavedGoogleAccount(acc.email, e)}
+                                title="Quitar cuenta guardada de este dispositivo"
+                                className="px-2 py-1 rounded-md text-[11px] text-[#777873] hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer shrink-0"
+                              >
+                                ✕
+                              </button>
                               <ArrowRight className="w-4 h-4 text-[#777873] shrink-0" />
-                            </button>
+                            </div>
                           ))
                         ) : null}
 

@@ -421,27 +421,13 @@ export async function verificarCodigoGoogle(
 }
 
 /**
- * Lista las cuentas de candidatos existentes para el selector rápido "Elige una cuenta de Google"
+ * Por privacidad y seguridad, el servidor NUNCA devuelve correos de otras personas.
+ * Cada navegador guarda únicamente las cuentas que el propio usuario haya verificado e iniciado en su dispositivo.
  */
 export async function listarCuentasGoogleDisponibles(): Promise<
   Array<{ id: string; email: string; name: string; avatar: string; role: string }>
 > {
-  const usuarios = await prisma.usuario.findMany({
-    where: {
-      activo: true,
-      rol: Rol.CANDIDATO,
-    },
-    orderBy: { ultimoAccesoEn: 'desc' },
-    take: 8,
-  });
-
-  return usuarios.map((u) => ({
-    id: u.id,
-    email: u.correo,
-    name: `${u.nombre} ${u.apellido}`.trim(),
-    avatar: `${u.nombre?.[0] ?? ''}${u.apellido?.[0] ?? ''}`.toUpperCase() || 'G',
-    role: rolToFrontend(u.rol),
-  }));
+  return [];
 }
 
 /**

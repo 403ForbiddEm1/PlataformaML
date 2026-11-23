@@ -1419,26 +1419,6 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                         ID: {profile.id}
                       </span>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={triggerDirectCvUpload}
-                      disabled={isUploadingDirectCV}
-                      className="press inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black bg-[#0B5D46] hover:bg-[#094B38] text-white dark:bg-[#C8FF45] dark:hover:bg-[#d4ff6b] dark:text-[#090A0C] shadow-xs cursor-pointer disabled:opacity-60"
-                    >
-                      {isUploadingDirectCV ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Upload className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {isUploadingDirectCV
-                          ? 'Subiendo CV...'
-                          : profile.cvFileName || uploadedCVName
-                          ? 'Subir / Cambiar CV (PDF o DOC)'
-                          : 'Subir CV (PDF o DOC)'}
-                      </span>
-                    </button>
                   </div>
                 </div>
 
@@ -1897,22 +1877,6 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                     {/* Sub-block 3: CV Actions & Immutable Notice */}
                     <div className="p-6 sm:p-8 space-y-4 flex-1 flex flex-col justify-between">
                       <div className="space-y-3">
-                        <button
-                          type="button"
-                          onClick={triggerDirectCvUpload}
-                          disabled={isUploadingDirectCV}
-                          className="w-full inline-flex flex-row items-center justify-center gap-2.5 px-4 py-3 rounded-xl text-xs font-black text-slate-950 bg-[#C8FF45] hover:bg-[#d5ff6b] border border-[#9ecb2e] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_4px_0_#658517] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer select-none disabled:opacity-60"
-                        >
-                          {isUploadingDirectCV ? (
-                            <Loader2 className="w-4 h-4 shrink-0 animate-spin text-slate-950" />
-                          ) : (
-                            <Upload className="w-4 h-4 shrink-0 text-slate-950" />
-                          )}
-                          <span className="leading-none tracking-wide">
-                            {isUploadingDirectCV ? 'SUBIENDO CV...' : 'SUBIR CV (PDF O DOC)'}
-                          </span>
-                        </button>
-
                         <button
                           type="button"
                           onClick={handleDownloadCV}

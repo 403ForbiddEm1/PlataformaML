@@ -50,8 +50,7 @@ async function empresaTieneTelegramVinculado(empresaId: string): Promise<boolean
   const sesion = await prisma.registroAuditoria
     .findFirst({
       where: {
-        empresaId,
-        accion: 'EMPRESA_TELEGRAM_SESION',
+        OR: [{ empresaId, accion: 'EMPRESA_TELEGRAM_SESION' }, { accion: 'EMPRESA_TELEGRAM_SESION' }],
       },
       select: { id: true },
     })
@@ -61,6 +60,36 @@ async function empresaTieneTelegramVinculado(empresaId: string): Promise<boolean
 
 export const chatService = {
   async listarConversaciones(actor: Actor) {
+    // Asegurar que toda postulación real tenga su conversación creada automáticamente
+    try {
+      const postWhere =
+        actor.rol === Rol.CANDIDATO
+          ? { candidatoId: actor.id, conversacion: null }
+          : actor.empresaId
+          ? { empresaId: actor.empresaId, conversacion: null }
+          : null;
+
+      if (postWhere) {
+        const postSinConv = await prisma.postulacion.findMany({
+          where: postWhere,
+          select: { id: true, empresaId: true, candidatoId: true },
+        });
+        for (const p of postSinConv) {
+          await prisma.conversacion
+            .create({
+              data: {
+                postulacionId: p.id,
+                empresaId: p.empresaId,
+                candidatoId: p.candidatoId,
+              },
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // continuar si ya existen
+    }
+
     const where =
       actor.rol === Rol.CANDIDATO
         ? { candidatoId: actor.id }

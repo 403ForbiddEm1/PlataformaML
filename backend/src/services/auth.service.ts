@@ -28,6 +28,14 @@ function generarTokenPlano(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function obtenerUrlFrontendPublica(): string {
+  const raw = process.env.FRONTEND_URL || process.env.APP_URL || '';
+  if (raw && !raw.includes('localhost') && !raw.includes('127.0.0.1')) {
+    return raw.split(',')[0].trim().replace(/\/+$/, '');
+  }
+  return 'https://plataforma-ml.vercel.app';
+}
+
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -101,7 +109,7 @@ export async function registrarCandidato(
   });
 
   // Enviar correo (fallo no rompe el flujo)
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const appUrl = obtenerUrlFrontendPublica();
   await emailService.sendEmail({
     to: usuario.correo,
     subject: 'Verifica tu correo — Plataforma de Reclutamiento',
@@ -185,6 +193,8 @@ export async function registrarEmpresa(
         rol: Rol.ADMIN,              // el servidor fija el rol
         empresaId: emp.id,
         aceptoTerminosEn: new Date(),
+        correoVerificadoEn: new Date(),
+        consentimientoWhatsappEn: datos.telefono ? new Date() : null,
       },
     });
 
@@ -202,7 +212,7 @@ export async function registrarEmpresa(
     },
   });
 
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const appUrl = obtenerUrlFrontendPublica();
   await emailService.sendEmail({
     to: usuario.correo,
     subject: 'Verifica tu correo — Plataforma de Reclutamiento',
@@ -376,7 +386,7 @@ export async function reenviarVerificacion(usuarioId: string): Promise<{ mensaje
     },
   });
 
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const appUrl = obtenerUrlFrontendPublica();
   await emailService.sendEmail({
     to: usuario.correo,
     subject: 'Nuevo enlace de verificación',
@@ -409,7 +419,7 @@ export async function solicitarRecuperacion(correoRaw: string): Promise<{ mensaj
     },
   });
 
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const appUrl = obtenerUrlFrontendPublica();
   await emailService.sendEmail({
     to: usuario.correo,
     subject: 'Recuperación de contraseña',

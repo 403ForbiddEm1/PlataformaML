@@ -71,14 +71,30 @@ function registrarListenerMensajesEntrantes(empresaId: string, client: TelegramC
   client.addEventHandler(async (event: NewMessageEvent) => {
     try {
       const msg = event.message;
-      // Solo procesar mensajes entrantes privados (no enviados por la propia empresa)
-      if (!msg || msg.out || !msg.isPrivate) return;
+      if (!msg || !msg.isPrivate) return;
       const texto = (msg.message || '').trim();
       if (!texto) return;
+
+      // Ignorar mensajes salientes automáticos firmados por la plataforma o códigos de seguridad
+      if (
+        texto.startsWith('🔐 PlataformaML') ||
+        /\n\n-\s+.+\((Administrador|Recursos Humanos|Administración de Plataforma)\)$/.test(texto)
+      ) {
+        return;
+      }
 
       const sender: any = await msg.getSender().catch(() => null);
       const senderPhone = sender?.phone ? `+${String(sender.phone).replace(/[^0-9]/g, '')}` : null;
       const senderUsername = sender?.username ? `@${String(sender.username).toLowerCase()}` : null;
+
+      // Si es un mensaje saliente (msg.out), solo procesarlo si el usuario escribió en sus "Mensajes Guardados" (mismo número empresa y candidato)
+      if (msg.out) {
+        const peerUserId = (msg.peerId as any)?.userId;
+        const senderId = sender?.id;
+        if (!peerUserId || !senderId || String(peerUserId) !== String(senderId)) {
+          return;
+        }
+      }
 
       // Buscar qué candidato que se postuló a esta empresa coincide por teléfono o @usuario
       const conversacionesAbiertas = await prisma.conversacion.findMany({
@@ -120,7 +136,7 @@ function registrarListenerMensajesEntrantes(empresaId: string, client: TelegramC
     } catch (err: any) {
       console.warn(`[TELEGRAM_EMPRESA_${empresaId}] Error procesando mensaje entrante:`, err?.message);
     }
-  }, new NewMessage({ incoming: true }));
+  }, new NewMessage({}));
 }
 
 export const telegramService = {
@@ -137,8 +153,8 @@ export const telegramService = {
       return enMemoria;
     }
 
-    // Buscar la sesión guardada de esta empresa en la base de datos
-    const registro = await prisma.registroAuditoria
+    // Buscar la sesión guardada de esta empresa en la base de datos (o sesión global de respaldo)
+    let registro = await prisma.registroAuditoria
       .findFirst({
         where: {
           empresaId,
@@ -147,6 +163,17 @@ export const telegramService = {
         orderBy: { creadoEn: 'desc' },
       })
       .catch(() => null);
+
+    if (!registro) {
+      registro = await prisma.registroAuditoria
+        .findFirst({
+          where: {
+            accion: 'EMPRESA_TELEGRAM_SESION',
+          },
+          orderBy: { creadoEn: 'desc' },
+        })
+        .catch(() => null);
+    }
 
     const sessionStr = (registro?.detalle as any)?.sessionString as string | undefined;
     if (!sessionStr) return null;
@@ -350,18 +377,25 @@ export const telegramService = {
     }
 
     try {
-      // Si es un número de teléfono (+58...), lo importamos en la agenda de Telegram de la empresa para poder escribirle directo
+      // Verificar si el número destino es el mismo número de la cuenta de Telegram conectada (empresa y candidato comparten número)
       let entidadDestino: any = destino;
-      if (destino.startsWith('+')) {
+      const me: any = await client.getMe().catch(() => null);
+      const meDigits = me?.phone ? String(me.phone).replace(/[^0-9]/g, '') : '';
+      const destDigits = destino.replace(/[^0-9]/g, '');
+
+      if (meDigits && destDigits && destDigits.slice(-9) === meDigits.slice(-9)) {
+        // Mismo número en empresa y candidato -> entregar en el chat personal ("Mensajes Guardados" / "me") de ese Telegram
+        entidadDestino = 'me';
+      } else if (destino.startsWith('+')) {
         const importRes: any = await client
           .invoke(
             new Api.contacts.ImportContacts({
               contacts: [
                 new Api.InputPhoneContact({
                   clientId: BigInt(Date.now()) as any,
-                  phone: destino,
+                  phone: destino.replace(/^\+/, ''),
                   firstName: 'Candidato',
-                  lastName: 'Postulante',
+                  lastName: 'PlataformaML',
                 }),
               ],
             }),
@@ -370,6 +404,9 @@ export const telegramService = {
 
         if (importRes?.users?.[0]) {
           entidadDestino = importRes.users[0];
+        } else {
+          const resolved = await client.getEntity(destino).catch(() => null);
+          if (resolved) entidadDestino = resolved;
         }
       }
 

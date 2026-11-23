@@ -61,6 +61,12 @@ export const emailService = {
     // 1. Si hay GMAIL_SCRIPT_URL (Google Apps Script Web App HTTPS) -> 100% gratis con tu Gmail, sin bloqueo en Venezuela y funciona en Render (puerto 443)
     if (process.env.GMAIL_SCRIPT_URL) {
       const senderDisplay = (senderName || process.env.APP_NAME || 'Plataforma de Reclutamiento').replace(/"/g, '');
+      const validReplyTo =
+        replyTo && replyTo.includes('@') && !replyTo.endsWith('.test')
+          ? replyTo.trim()
+          : to && to.includes('@') && !to.endsWith('.test')
+          ? to.trim()
+          : '403forbiddem1@gmail.com';
       try {
         const res = await fetch(process.env.GMAIL_SCRIPT_URL.trim(), {
           method: 'POST',
@@ -71,7 +77,7 @@ export const emailService = {
             text,
             html: htmlContent,
             senderName: senderDisplay,
-            replyTo: replyTo || undefined,
+            replyTo: validReplyTo,
           }),
         });
         if (!res.ok) {

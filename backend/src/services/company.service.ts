@@ -107,7 +107,11 @@ export async function invitarMiembro(
   });
 
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const rawAppUrl = process.env.FRONTEND_URL || process.env.APP_URL || '';
+  const appUrl =
+    rawAppUrl && !rawAppUrl.includes('localhost') && !rawAppUrl.includes('127.0.0.1')
+      ? rawAppUrl.split(',')[0].trim().replace(/\/+$/, '')
+      : 'https://plataforma-ml.vercel.app';
   const queryExtras = [
     datos.nombre ? `name=${encodeURIComponent(datos.nombre.trim())}` : '',
     datos.telefono ? `phone=${encodeURIComponent(datos.telefono.trim())}` : '',
