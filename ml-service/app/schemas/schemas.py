@@ -22,7 +22,8 @@ class PredictResponse(BaseModel):
     score: float = Field(..., description="Probabilidad de aptitud (0 a 100)")
     recommended: bool
     similarity: float = Field(..., description="Similitud de texto TF-IDF (0 a 100)")
-    experience_ok: Optional[bool] = Field(None, description="Cumple la experiencia mínima; null si la vacante no la pide")
+    experience_ok: Optional[bool] = Field(None, description="Cumple la experiencia mínima; null si la vacante no pide años o el candidato no declaró su experiencia")
+    experience_declared: bool = Field(True, description="El candidato dice cuánta experiencia tiene (años) o que no tiene")
     matched_terms: list[str]
 
 

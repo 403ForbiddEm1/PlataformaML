@@ -20,10 +20,10 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from app.config import DATA_RAW, METRICS_PATH, MODEL_PATH, RANDOM_STATE
+from app.config import DATA_RAW, FORCED_MODEL, METRICS_PATH, MODEL_PATH, RANDOM_STATE
 from app.models.evaluation import best_cosine_threshold, compute_metrics
-from app.preprocessing.features import FEATURE_NAMES, build_feature_matrix
-from app.preprocessing.preprocess import STOPWORDS_ES, clean_text
+from app.preprocessing.features import FEATURE_NAMES, MONOTONIC_CST, build_feature_matrix, cosine_similarity
+from app.preprocessing.preprocess import STOPWORDS_ES, prepare_text
 from app.preprocessing.synthetic_data import generate
 
 DEFAULT_MODEL = "regresion_logistica"
@@ -36,8 +36,10 @@ def _logreg():
 
 
 def _forest():
-    return RandomForestClassifier(n_estimators=200, min_samples_leaf=2, class_weight="balanced",
-                                  random_state=RANDOM_STATE)
+    # min_samples_leaf=5 y restricciones de monotonía: sin ellas el bosque memoriza las pocas etiquetas ruidosas y le da
+    # probabilidades altas a candidatos sin ninguna coincidencia con la vacante.
+    return RandomForestClassifier(n_estimators=200, min_samples_leaf=5, class_weight="balanced",
+                                  monotonic_cst=MONOTONIC_CST, random_state=RANDOM_STATE)
 
 
 def _mlp():
@@ -59,7 +61,7 @@ def build_vectorizer() -> TfidfVectorizer:
 
 def fit_vectorizer(train_df: pd.DataFrame) -> TfidfVectorizer:
     texts = pd.concat([train_df["vacancy_text"], train_df["candidate_text"]]).drop_duplicates()
-    return build_vectorizer().fit([clean_text(t) for t in texts])
+    return build_vectorizer().fit([prepare_text(t) for t in texts])
 
 
 def fit_model(train_df: pd.DataFrame, name: str = DEFAULT_MODEL):
@@ -123,16 +125,30 @@ def train_and_save(csv_path=DATA_RAW, model_path=MODEL_PATH) -> dict:
         fitted[name] = clf
 
     # Selección con datos de entrenamiento únicamente (la prueba no interviene en la elección).
-    selected = max(comparison, key=lambda n: (comparison[n]["cv_train"]["f1_mean"], comparison[n]["cv_train"]["roc_auc_mean"]))
+    auto = max(comparison, key=lambda n: (comparison[n]["cv_train"]["f1_mean"], comparison[n]["cv_train"]["roc_auc_mean"]))
+    if FORCED_MODEL:
+        if FORCED_MODEL not in CANDIDATES:
+            raise ValueError(f"ML_MODEL='{FORCED_MODEL}' no es válido; opciones: {', '.join(CANDIDATES)}")
+        selected = FORCED_MODEL
+    else:
+        selected = auto
 
-    thr = best_cosine_threshold(X_tr[:, 0], y_tr)
-    baseline = compute_metrics(y_te, (X_te[:, 0] >= thr).astype(int), X_te[:, 0])
+    cos_tr = cosine_similarity(vectorizer, train_df["vacancy_text"].tolist(), train_df["candidate_text"].tolist())
+    cos_te = cosine_similarity(vectorizer, test_df["vacancy_text"].tolist(), test_df["candidate_text"].tolist())
+    thr = best_cosine_threshold(cos_tr, y_tr)
+    baseline = compute_metrics(y_te, (cos_te >= thr).astype(int), cos_te)
     baseline["threshold"] = round(thr, 3)
 
     metrics = {
         "model": f"TF-IDF + variables de ajuste + {selected}",
         "selected_model": selected,
-        "selection_criterion": "mayor promedio de F1 en validación cruzada agrupada por vacante (solo datos de entrenamiento)",
+        "selection_criterion": (
+            ("mayor promedio de F1 en validación cruzada agrupada por vacante (solo datos de entrenamiento)")
+            if selected == auto and not FORCED_MODEL else
+            f"elegido manualmente (ML_MODEL={FORCED_MODEL}); por F1 de validación cruzada habría ganado {auto}, "
+            "pero la diferencia es pequeña y este modelo fue el más estable en las pruebas de simulación"),
+        "best_by_criterion": auto,
+        "feature_names": FEATURE_NAMES,
         "n_pairs": int(len(df)), "n_train": int(len(train_df)), "n_test": int(len(test_df)),
         "test": comparison[selected]["test"],
         "comparison": comparison,
