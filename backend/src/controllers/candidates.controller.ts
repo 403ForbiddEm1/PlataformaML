@@ -1,4 +1,6 @@
 // src/controllers/candidates.controller.ts
+import fs from 'fs';
+import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { HttpError } from '../utils/http-error';
