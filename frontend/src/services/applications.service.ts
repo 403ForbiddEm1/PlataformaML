@@ -2,7 +2,6 @@ import { Application, ApplicationStatus, ApplicationTimelineEvent } from '@/type
 import { api, USE_MOCK } from './api';
 import { mockStore } from './mockData';
 import { notificationsService } from './notifications.service';
-import { parseAndAnalyzeCV } from './cvParser';
 import { candidatesService } from './candidates.service';
 
 export interface SubmitApplicationPayload {
@@ -195,27 +194,12 @@ export const applicationsService = {
   },
 
   async submitApplication(payload: SubmitApplicationPayload): Promise<Application> {
-    // Si el postulante adjunta un CV, extraer competencias con IA y actualizar su perfil automáticamente
+    // Si el postulante adjunta un CV, subirlo al backend real para que extraiga y guarde en Neon
     if (payload.cvFile) {
       try {
-        const fullName = `${payload.firstName} ${payload.lastName}`.trim();
-        const parsedCV = await parseAndAnalyzeCV(payload.cvFile, payload.cvFile.name, fullName);
-        await candidatesService.updateProfile({
-          firstName: payload.firstName,
-          lastName: payload.lastName,
-          email: payload.email,
-          phone: payload.phone,
-          cvFileName: payload.cvFile.name,
-          idCardFileName: payload.idCardFile ? payload.idCardFile.name : undefined,
-          title: parsedCV.title,
-          bio: parsedCV.bio,
-          skills: parsedCV.skills,
-          education: parsedCV.education,
-          experience: parsedCV.experience,
-          location: parsedCV.location,
-        }, payload.email);
+        await candidatesService.uploadCVDocument(payload.cvFile);
       } catch (cvErr) {
-        console.warn('Error parsing and analyzing CV during submission:', cvErr);
+        console.warn('Error subiendo y analizando CV en el backend:', cvErr);
       }
     }
 

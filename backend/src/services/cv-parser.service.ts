@@ -32,6 +32,7 @@ export interface CvExtraido {
   location: string;
   phone: string;
   texto: string;
+  extractor?: 'gemini' | 'local';
 }
 
 // ─── 1. Extracción real de texto ──────────────────────────────────────────
@@ -545,7 +546,191 @@ function extraerUbicacion(texto: string): string {
   return '';
 }
 
-// ─── 8. Orquestador principal ─────────────────────────────────────────────
+// ─── 8. Extracción estructurada con Google Gemini API (OCR + JSON estricto) ──
+
+const GEMINI_CV_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING', description: 'Título profesional o cargo objetivo tal como aparece en el CV, o vacío si no existe' },
+    bio: { type: 'STRING', description: 'Resumen o perfil profesional literal/fiel del CV, o vacío si no existe' },
+    location: { type: 'STRING', description: 'Ciudad, estado y/o país del candidato tal como aparece en el CV, o vacío' },
+    phone: { type: 'STRING', description: 'Número de teléfono del candidato tal como aparece en el CV, o vacío' },
+    skills: {
+      type: 'ARRAY',
+      items: { type: 'STRING' },
+      description: 'Lista exacta de habilidades técnicas, herramientas y competencias que aparecen en el CV (sin inventar)',
+    },
+    education: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          institution: { type: 'STRING' },
+          degree: { type: 'STRING' },
+          graduationYear: { type: 'STRING' },
+        },
+        required: ['institution', 'degree', 'graduationYear'],
+      },
+      description: 'Formación académica, títulos y certificaciones reales presentes en el CV',
+    },
+    experience: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          company: { type: 'STRING' },
+          role: { type: 'STRING' },
+          period: { type: 'STRING' },
+          description: { type: 'STRING' },
+        },
+        required: ['company', 'role', 'period', 'description'],
+      },
+      description: 'Solo experiencia laboral real indicada en el CV. Si el candidato no tiene experiencia laboral, devolver []',
+    },
+    rawText: {
+      type: 'STRING',
+      description: 'Transcripción limpia y completa del texto relevante del CV para análisis de Machine Learning (TF-IDF)',
+    },
+  },
+  required: ['title', 'bio', 'location', 'phone', 'skills', 'education', 'experience', 'rawText'],
+};
+
+const GEMINI_CV_PROMPT = `Eres un extractor documental de Currículums Vitae (CV) de máxima precisión.
+REGLAS ESTRICTAS:
+1. Extrae ÚNICAMENTE información que aparezca explícitamente en el documento adjunto.
+2. PROHIBIDO inventar, asumir o completar datos que no estén escritos en el CV.
+3. Si el candidato no tiene experiencia laboral (o solo muestra proyectos de portafolio/estudios), devuelve "experience": [].
+4. Si un campo no aparece en el CV, devuélvelo como cadena vacía "" o lista vacía [].
+5. En "skills" incluye todas las herramientas, tecnologías, programas e idiomas técnicos mencionados en el CV, sin duplicados.
+6. En "education" separa correctamente el título ("degree"), la institución ("institution") y el año de graduación o período ("graduationYear").
+7. En "rawText" devuelve el texto completo limpio del CV (en español o en el idioma original) para que nuestro modelo de Machine Learning pueda analizarlo.`;
+
+async function analizarCvConGemini(rutaFisica: string): Promise<CvExtraido | null> {
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) return null;
+
+  const primaryModel = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
+  const candidateModels = Array.from(new Set([primaryModel, 'gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-2.5-flash']));
+  const ext = path.extname(rutaFisica).toLowerCase();
+
+  try {
+    const parts: any[] = [{ text: GEMINI_CV_PROMPT }];
+
+    if (ext === '.pdf') {
+      const buffer = await fs.promises.readFile(rutaFisica);
+      // Límite seguro de 15 MB para inline_data
+      if (buffer.length > 15 * 1024 * 1024) return null;
+      parts.push({
+        inline_data: {
+          mime_type: 'application/pdf',
+          data: buffer.toString('base64'),
+        },
+      });
+    } else {
+      const texto = await extraerTextoDeArchivo(rutaFisica);
+      if (!texto || texto.length < 15) return null;
+      parts.push({ text: `CONTENIDO DEL CV:\n\n${texto.slice(0, 30000)}` });
+    }
+
+    let payload: any = null;
+    let usedModel = primaryModel;
+
+    for (const model of candidateModels) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts }],
+              generationConfig: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                responseSchema: GEMINI_CV_SCHEMA,
+              },
+            }),
+          },
+        );
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          payload = await response.json();
+          usedModel = model;
+          break;
+        }
+        const errTxt = await response.text().catch(() => '');
+        console.warn(`[CV_GEMINI] ${model} HTTP ${response.status}: ${errTxt.slice(0, 180)}`);
+      } catch (e: any) {
+        clearTimeout(timeout);
+        console.warn(`[CV_GEMINI] ${model} error:`, e?.message);
+      }
+    }
+
+    if (!payload) return null;
+    const textOut: string = payload?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!textOut) return null;
+
+    const parsed = JSON.parse(textOut);
+    const cleanStr = (v: any, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+    const skills: string[] = Array.isArray(parsed.skills)
+      ? Array.from(
+          new Set(
+            parsed.skills
+              .map((s: any) => cleanStr(s, 60))
+              .filter((s: string) => s.length >= 2),
+          ),
+        ).slice(0, 50) as string[]
+      : [];
+
+    const education: CvEducacion[] = Array.isArray(parsed.education)
+      ? parsed.education
+          .map((e: any) => ({
+            institution: cleanStr(e?.institution, 140) || '—',
+            degree: cleanStr(e?.degree, 140) || '—',
+            graduationYear: cleanStr(e?.graduationYear, 20),
+          }))
+          .filter((e: CvEducacion) => e.institution !== '—' || e.degree !== '—')
+          .slice(0, 15)
+      : [];
+
+    const experience: CvExperiencia[] = Array.isArray(parsed.experience)
+      ? parsed.experience
+          .map((x: any) => ({
+            company: cleanStr(x?.company, 120) || '—',
+            role: cleanStr(x?.role, 120) || '—',
+            period: cleanStr(x?.period, 60),
+            description: cleanStr(x?.description, 700),
+          }))
+          .filter((x: CvExperiencia) => x.company !== '—' || x.role !== '—')
+          .slice(0, 15)
+      : [];
+
+    const rawText = cleanStr(parsed.rawText, 30000);
+    console.log(`[CV_GEMINI] Extracción exitosa (${usedModel}): ${skills.length} skills, ${education.length} edu, ${experience.length} exp`);
+
+    return {
+      title: cleanStr(parsed.title, 120),
+      bio: cleanStr(parsed.bio, 1000),
+      location: cleanStr(parsed.location, 120),
+      phone: cleanStr(parsed.phone, 40),
+      skills,
+      education,
+      experience,
+      texto: rawText,
+      extractor: 'gemini',
+    };
+  } catch (err: any) {
+    console.warn('[CV_GEMINI] Fallback a parser local:', err?.message);
+    return null;
+  }
+}
+
+// ─── 9. Orquestador principal ─────────────────────────────────────────────
 
 export function estructurarCv(texto: string): CvExtraido {
   const lineas = texto.split('\n').map((l) => l.trim());
@@ -563,10 +748,23 @@ export function estructurarCv(texto: string): CvExtraido {
     location: extraerUbicacion(texto),
     phone: extraerTelefono(texto),
     texto,
+    extractor: 'local',
   };
 }
 
 export async function analizarArchivoCv(rutaFisica: string): Promise<CvExtraido> {
+  // 1. Intentar primero con Gemini API (si GEMINI_API_KEY está configurada)
+  const conGemini = await analizarCvConGemini(rutaFisica);
+  if (conGemini) {
+    // Si Gemini no devolvió rawText largo, complementar con texto local para el modelo ML
+    if (!conGemini.texto || conGemini.texto.length < 40) {
+      const localTxt = await extraerTextoDeArchivo(rutaFisica);
+      if (localTxt) conGemini.texto = localTxt;
+    }
+    return conGemini;
+  }
+
+  // 2. Respaldo automático: parser real local (pdf-parse / mammoth / ml-service)
   const texto = await extraerTextoDeArchivo(rutaFisica);
   return estructurarCv(texto);
 }

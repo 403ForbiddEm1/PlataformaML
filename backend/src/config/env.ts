@@ -13,6 +13,8 @@ const schema = z.object({
   ML_API_KEY: z.string().min(1, 'ML_API_KEY es obligatoria'),
   SUPER_ADMIN_EMAIL: z.string().email().optional(),
   SUPER_ADMIN_PASSWORD: z.string().min(8).optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-3.8-flash'),
 });
  
 const parsed = schema.safeParse(process.env);

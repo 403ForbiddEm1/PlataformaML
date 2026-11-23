@@ -48,3 +48,5 @@ services:
         sync: false
       - key: GMAIL_SCRIPT_URL
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false

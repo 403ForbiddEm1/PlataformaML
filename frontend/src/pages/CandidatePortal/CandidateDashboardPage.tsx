@@ -13,7 +13,6 @@ import { vacanciesService } from '@/services/vacancies.service';
 import { notificationsService } from '@/services/notifications.service';
 import { authService } from '@/services/auth.service';
 import { api, USE_MOCK } from '@/services/api';
-import { parseAndAnalyzeCV } from '@/services/cvParser';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
@@ -336,18 +335,14 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     try {
       const uploadRes = await candidatesService.uploadCVDocument(file);
       const backendExtracted = uploadRes?.extracted;
-      const candidateFullName =
-        user?.name || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Candidato';
-      const parsedData = backendExtracted
-        ? {
-            title: backendExtracted.title || '',
-            bio: backendExtracted.bio || '',
-            skills: Array.isArray(backendExtracted.skills) ? backendExtracted.skills : [],
-            education: Array.isArray(backendExtracted.education) ? backendExtracted.education : [],
-            experience: Array.isArray(backendExtracted.experience) ? backendExtracted.experience : [],
-            location: backendExtracted.location || '',
-          }
-        : await parseAndAnalyzeCV(file, file.name, candidateFullName);
+      const parsedData = {
+        title: backendExtracted?.title || '',
+        bio: backendExtracted?.bio || '',
+        skills: Array.isArray(backendExtracted?.skills) ? backendExtracted.skills : [],
+        education: Array.isArray(backendExtracted?.education) ? backendExtracted.education : [],
+        experience: Array.isArray(backendExtracted?.experience) ? backendExtracted.experience : [],
+        location: backendExtracted?.location || '',
+      };
 
       let finalLocation = parsedData.location || editLocation.trim() || profile?.location || '';
       if (!finalLocation) {
@@ -714,40 +709,17 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     const formattedTime = `Hoy, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     setLastReanalysisTime(formattedTime);
 
-    // Extraer y normalizar competencias, experiencia y educación con el motor IA
+    // Re-analizar CV en el servidor real (sin parser local del navegador)
     try {
       const targetFileName = selectedCVFile?.name || uploadedCVName || profile?.cvFileName || 'Curriculum_Vitae.pdf';
-      const candidateFullName = user?.name || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Candidato';
-      const parsedData = await parseAndAnalyzeCV(
-        selectedCVFile,
-        targetFileName,
-        candidateFullName
-      );
-
-      let finalLocation = parsedData.location || editLocation.trim() || profile?.location || '';
-      if (!finalLocation) {
-        finalLocation = await handleDetectGPSLocation(true);
+      if (selectedCVFile) {
+        await candidatesService.uploadCVDocument(selectedCVFile);
       }
-      if (finalLocation) {
-        setEditLocation(finalLocation);
-      }
-
-      const updated = await candidatesService.updateProfile({
-        email: editEmail ? editEmail.trim() : profile?.email,
-        phone: editPhone ? editPhone.trim() : profile?.phone,
-        title: parsedData.title,
-        bio: parsedData.bio,
-        skills: parsedData.skills,
-        education: parsedData.education,
-        experience: parsedData.experience,
-        location: finalLocation,
-        cvFileName: targetFileName,
-      }, editEmail.trim() || user?.email);
-
-      setProfile(updated);
-      setUploadedCVName(targetFileName);
+      const freshProfile = await candidatesService.getProfile(editEmail.trim() || user?.email);
+      setProfile(freshProfile);
+      setUploadedCVName(freshProfile.cvFileName || targetFileName);
     } catch {
-      // Keep optimistic update
+      // Mantiene el perfil actual si falla la red
     }
 
     setIsReanalyzing(false);
