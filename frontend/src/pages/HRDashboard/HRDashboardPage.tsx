@@ -20,6 +20,8 @@ import { type SidebarSection } from '@/components/layout/Sidebar';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { EmailTemplatesEditor } from '@/components/company/EmailTemplatesEditor';
 import { CandidateProfileDrawer } from '@/components/candidates/CandidateProfileDrawer';
+import { QuickNotifyRowBar } from '@/components/applications/QuickNotifyRowBar';
+import { type NotifyChannel } from '@/services/applications.service';
 import {
   Users,
   Briefcase,
@@ -94,6 +96,9 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortByML, setSortByML] = useState(true);
+  const [expandedNotifyAppId, setExpandedNotifyAppId] = useState<string | null>(null);
+  const [autoNotifyChannel, setAutoNotifyChannel] = useState<NotifyChannel>('AMBOS');
+  const [isBulkRejecting, setIsBulkRejecting] = useState(false);
 
   // Employees state (affiliated to RRHH company)
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -1208,8 +1213,75 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                     </select>
                   </div>
 
-                  {/* Sort toggle (RF06: Ordenado por Algoritmo) */}
-                  <div className="shrink-0 flex items-center gap-2 w-full md:w-auto justify-end">
+                  {/* Sort toggle + Auto-notify channel + Bulk reject <50% */}
+                  <div className="shrink-0 flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                    <select
+                      value={autoNotifyChannel}
+                      onChange={(e) => setAutoNotifyChannel(e.target.value as NotifyChannel)}
+                      className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 cursor-pointer"
+                      title="Canal automático de notificaciones"
+                    >
+                      <option value="AMBOS">Auto: Telegram + Correo</option>
+                      <option value="TELEGRAM">Auto: Solo Telegram / Chat</option>
+                      <option value="CORREO">Auto: Solo Correo</option>
+                    </select>
+
+                    {(() => {
+                      const below50 = filteredCandidates.filter(
+                        (a) =>
+                          typeof a.mlScore === 'number' &&
+                          a.mlScore < 50 &&
+                          a.status !== 'Descartado' &&
+                          a.status !== 'Contratado'
+                      );
+                      const companyLogoLocal =
+                        typeof window !== 'undefined'
+                          ? localStorage.getItem(`nexo_company_logo_${user?.empresaId || user?.companyId || user?.empresaNombre || ''}`) ||
+                            localStorage.getItem(`nexo_company_logo_${user?.empresaNombre || user?.companyName || ''}`)
+                          : null;
+                      return (
+                        <button
+                          type="button"
+                          disabled={below50.length === 0 || isBulkRejecting}
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `¿Descartar automáticamente a los ${below50.length} candidatos con afinidad menor a 50% y notificarles (${autoNotifyChannel})?`
+                              )
+                            ) {
+                              return;
+                            }
+                            setIsBulkRejecting(true);
+                            try {
+                              const res = await applicationsService.bulkRejectBelow50({
+                                vacancyId: selectedVacancyForRanking?.id,
+                                threshold: 50,
+                                channel: autoNotifyChannel,
+                                companyLogoUrl: companyLogoLocal || undefined,
+                              });
+                              showToast(
+                                'Descarte masivo completado',
+                                `Se descartaron y notificaron ${res.rejectedCount} postulantes por debajo del 50%.`,
+                                'success'
+                              );
+                              await loadData();
+                            } catch (err: any) {
+                              showToast('Error', err?.message || 'No se pudo completar el descarte masivo.', 'error');
+                            } finally {
+                              setIsBulkRejecting(false);
+                            }
+                          }}
+                          className="press inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-40 cursor-pointer shadow-2xs"
+                          title="Cancela y notifica automáticamente a todos los candidatos con menos de 50% de afinidad ML"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>
+                            {isBulkRejecting ? 'Descartando...' : `Descartar < 50% (${below50.length})`}
+                          </span>
+                        </button>
+                      );
+                    })()}
+
                     <button
                       type="button"
                       onClick={() => setSortByML(!sortByML)}
@@ -1238,11 +1310,25 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    {filteredCandidates.map((app, index) => (
+                    {filteredCandidates.map((app, index) => {
+                      const isNotifyOpen = expandedNotifyAppId === app.id;
+                      const companyLogoLocal =
+                        typeof window !== 'undefined'
+                          ? localStorage.getItem(`nexo_company_logo_${user?.empresaId || user?.companyId || user?.empresaNombre || ''}`) ||
+                            localStorage.getItem(`nexo_company_logo_${user?.empresaNombre || user?.companyName || ''}`)
+                          : null;
+                      return (
                       <div
                         key={app.id}
-                        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 p-5 sm:p-6 shadow-2xs transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+                        onClick={() => setExpandedNotifyAppId(isNotifyOpen ? null : app.id)}
+                        className={`bg-white dark:bg-slate-900 rounded-2xl border p-5 sm:p-6 shadow-2xs transition-all space-y-4 cursor-pointer ${
+                          isNotifyOpen
+                            ? 'border-[#0B5D46] dark:border-[#C8FF45]/60 ring-1 ring-[#0B5D46]/20 dark:ring-[#C8FF45]/20'
+                            : 'border-slate-200/90 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700'
+                        }`}
+                        title="Clic en nombre/foto para abrir perfil · Clic en cualquier otro lado para notificación rápida"
                       >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                         {/* Candidate Info & Position */}
                         <div className="flex items-start gap-4 min-w-0 flex-1">
                           {/* Rank number badge if sorted by ML */}
@@ -1256,10 +1342,16 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                             <div className="flex flex-wrap items-center gap-2.5">
                               <button
                                 type="button"
-                                onClick={() => setProfileDrawerApp(app)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setProfileDrawerApp(app);
+                                }}
                                 className="press text-base font-bold text-slate-900 dark:text-slate-100 hover:text-[#0B5D46] dark:hover:text-[#C8FF45] truncate flex items-center gap-2 cursor-pointer text-left"
                                 title="Abrir perfil del candidato desde la izquierda (Solo lectura)"
                               >
+                                <span className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
+                                  {app.candidateName.slice(0, 2).toUpperCase()}
+                                </span>
                                 <span className="underline decoration-[#C8B193] dark:decoration-[#C8FF45]/40 underline-offset-4">
                                   {app.candidateName}
                                 </span>
@@ -1270,7 +1362,10 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                               <Badge status={app.status} />
                               <button
                                 type="button"
-                                onClick={() => setProfileDrawerApp(app)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setProfileDrawerApp(app);
+                                }}
                                 className="press px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-[#EFE5D4] hover:bg-[#E5D6BE] dark:bg-white/10 dark:hover:bg-white/15 text-[#3A2818] dark:text-[#C8FF45] border border-[#C8B193] dark:border-white/15 cursor-pointer"
                               >
                                 Ver Perfil ➔
@@ -1401,7 +1496,8 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSelectedApp(app);
                               setIsDetailOpen(true);
                             }}
@@ -1412,7 +1508,18 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           </button>
                         </div>
                       </div>
-                    ))}
+                      {isNotifyOpen && (
+                        <QuickNotifyRowBar
+                          application={app}
+                          defaultChannel={autoNotifyChannel}
+                          companyLogoUrl={companyLogoLocal}
+                          onSuccess={() => loadData()}
+                          onClose={() => setExpandedNotifyAppId(null)}
+                        />
+                      )}
+                      </div>
+                      );
+                    })}
 
                     {filteredCandidates.length === 0 && (
                       <div className="bg-white dark:bg-slate-900 p-12 text-center rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">

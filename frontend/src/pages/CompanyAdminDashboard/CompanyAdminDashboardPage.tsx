@@ -15,6 +15,8 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import { EmailTemplatesEditor } from '@/components/company/EmailTemplatesEditor';
 import { TelegramLinkCard } from '@/components/company/TelegramLinkCard';
 import { CandidateProfileDrawer } from '@/components/candidates/CandidateProfileDrawer';
+import { QuickNotifyRowBar } from '@/components/applications/QuickNotifyRowBar';
+import { type NotifyChannel } from '@/services/applications.service';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
@@ -146,6 +148,9 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
   // Candidates Search & Filter
   const [candidateSearch, setCandidateSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
+  const [expandedNotifyAppId, setExpandedNotifyAppId] = useState<string | null>(null);
+  const [autoNotifyChannel, setAutoNotifyChannel] = useState<NotifyChannel>('AMBOS');
+  const [isBulkRejecting, setIsBulkRejecting] = useState(false);
 
   const handleSwitchTab = (nextTab: 'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile') => {
     setActiveTab(nextTab);
@@ -873,9 +878,73 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                   </p>
                 </div>
 
-                <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-white/55 dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-white/15 backdrop-blur-md">
-                  {filteredCandidates.length} postulantes encontrados
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={autoNotifyChannel}
+                    onChange={(e) => setAutoNotifyChannel(e.target.value as NotifyChannel)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/70 dark:bg-slate-900 border border-slate-300 dark:border-white/15 text-slate-800 dark:text-slate-100 cursor-pointer"
+                    title="Canal automático de notificaciones"
+                  >
+                    <option value="AMBOS">Auto: Telegram + Correo</option>
+                    <option value="TELEGRAM">Auto: Solo Telegram / Chat</option>
+                    <option value="CORREO">Auto: Solo Correo</option>
+                  </select>
+
+                  {(() => {
+                    const below50 = filteredCandidates.filter(
+                      (a) =>
+                        typeof a.mlScore === 'number' &&
+                        a.mlScore < 50 &&
+                        a.status !== 'Descartado' &&
+                        a.status !== 'Contratado'
+                    );
+                    return (
+                      <button
+                        type="button"
+                        disabled={below50.length === 0 || isBulkRejecting}
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              `¿Descartar automáticamente a los ${below50.length} candidatos con afinidad menor a 50% y enviarles notificación (${autoNotifyChannel})?`
+                            )
+                          ) {
+                            return;
+                          }
+                          setIsBulkRejecting(true);
+                          try {
+                            const res = await applicationsService.bulkRejectBelow50({
+                              vacancyId: vacancyFilter !== 'all' ? vacancyFilter : undefined,
+                              threshold: 50,
+                              channel: autoNotifyChannel,
+                              companyLogoUrl: companyLogoUrl || undefined,
+                            });
+                            showToast(
+                              'Descarte masivo completado',
+                              `Se descartaron y notificaron ${res.rejectedCount} postulantes por debajo del 50%.`,
+                              'success'
+                            );
+                            await loadCompanyData();
+                          } catch (err: any) {
+                            showToast('Error', err?.message || 'No se pudo completar el descarte masivo.', 'error');
+                          } finally {
+                            setIsBulkRejecting(false);
+                          }
+                        }}
+                        className="press inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-40 cursor-pointer shadow-xs"
+                        title="Cancela y notifica automáticamente a todos los postulantes con menos de 50% de afinidad ML"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>
+                          {isBulkRejecting ? 'Descartando...' : `Descartar < 50% (${below50.length})`}
+                        </span>
+                      </button>
+                    );
+                  })()}
+
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-white/55 dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-white/15 backdrop-blur-md">
+                    {filteredCandidates.length} postulantes
+                  </span>
+                </div>
               </div>
 
               {/* Filters Bar */}
@@ -924,31 +993,54 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/50 dark:divide-white/10">
-                    {filteredCandidates.map((app) => (
+                    {filteredCandidates.map((app) => {
+                      const isNotifyOpen = expandedNotifyAppId === app.id;
+                      const scoreVal = typeof app.mlScore === 'number' ? app.mlScore : 0;
+                      return (
+                      <React.Fragment key={app.id}>
                       <tr
-                        key={app.id}
-                        onClick={() => setProfileDrawerApp(app)}
-                        className="hover:bg-white/40 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
-                        title="Clic para abrir el perfil del candidato desde la izquierda (Solo lectura)"
+                        onClick={() => setExpandedNotifyAppId(isNotifyOpen ? null : app.id)}
+                        className={`transition-colors cursor-pointer group ${
+                          isNotifyOpen
+                            ? 'bg-emerald-500/8 dark:bg-[#C8FF45]/[0.06]'
+                            : 'hover:bg-white/40 dark:hover:bg-white/[0.04]'
+                        }`}
+                        title="Clic en foto/nombre para abrir perfil · Clic en cualquier otro lado para notificación rápida"
                       >
-                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                            {app.candidateName.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] underline decoration-transparent group-hover:decoration-current underline-offset-4 transition-colors">
-                              {app.candidateName}
-                            </span>
-                            <span className="block text-[11px] text-slate-500 dark:text-slate-400 font-normal">{app.candidateEmail}</span>
-                          </div>
+                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProfileDrawerApp(app);
+                            }}
+                            className="flex items-center gap-3 text-left cursor-pointer group/name"
+                            title="Abrir perfil del candidato"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                              {app.candidateName.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="group-hover/name:text-[#0B5D46] dark:group-hover/name:text-[#C8FF45] underline decoration-transparent group-hover/name:decoration-current underline-offset-4 transition-colors">
+                                {app.candidateName}
+                              </span>
+                              <span className="block text-[11px] text-slate-500 dark:text-slate-400 font-normal">{app.candidateEmail}</span>
+                            </div>
+                          </button>
                         </td>
                         <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
                           {app.vacancyTitle}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-black text-xs border border-emerald-500/30">
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            {typeof app.mlScore === 'number' ? app.mlScore : 85}% Afinidad
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-black text-xs border ${
+                              scoreVal < 50
+                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                                : 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            {scoreVal}% Afinidad
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -988,7 +1080,22 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      {isNotifyOpen && (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-3 bg-transparent">
+                            <QuickNotifyRowBar
+                              application={app}
+                              defaultChannel={autoNotifyChannel}
+                              companyLogoUrl={companyLogoUrl}
+                              onSuccess={() => loadCompanyData()}
+                              onClose={() => setExpandedNotifyAppId(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -27,3 +27,19 @@ selectionRouter.patch(
   exigirRol(Rol.ADMIN, Rol.RRHH),
   selectionController.updateStatus,
 );
+
+// Envío rápido y automático de notificación (Telegram/Chat y/o Correo con logo y nombre de empresa)
+selectionRouter.post(
+  '/:id/quick-notify',
+  autenticar,
+  exigirRol(Rol.ADMIN, Rol.RRHH),
+  selectionController.quickNotify,
+);
+
+// Descartar masivamente postulantes con afinidad ML menor a 50% (con notificación automática)
+selectionRouter.post(
+  '/bulk-reject-below-50',
+  autenticar,
+  exigirRol(Rol.ADMIN, Rol.RRHH),
+  selectionController.bulkRejectBelow50,
+);

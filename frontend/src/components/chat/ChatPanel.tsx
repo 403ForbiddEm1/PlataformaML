@@ -1,7 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Lock, MessageSquare, Search, Send, Send as TelegramIcon } from 'lucide-react';
+import {
+  ArrowLeft,
+  Briefcase,
+  Building2,
+  Globe,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  MessageSquare,
+  Phone,
+  Search,
+  Send,
+  Send as TelegramIcon,
+  Sparkles,
+  User,
+  X,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { api } from '@/services/api';
 import {
   chatService,
   type ChatConversationDto,
@@ -49,6 +67,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ focusApplicationId, classN
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState('');
   const [mobileThread, setMobileThread] = useState(false);
+
+  // Mini perfil deslizable a la izquierda al hacer clic en candidato o empresa
+  const [miniProfileOpen, setMiniProfileOpen] = useState(false);
+  const [miniProfileLoading, setMiniProfileLoading] = useState(false);
+  const [miniProfileData, setMiniProfileData] = useState<any>(null);
 
   const endRef = useRef<HTMLDivElement | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -158,10 +181,199 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ focusApplicationId, classN
 
   const counterpartName = (c: ChatConversationDto) => (isCandidate ? c.empresaNombre : c.candidatoNombre);
 
+  const openMiniProfile = async (conv: ChatConversationDto) => {
+    setMiniProfileOpen(true);
+    setMiniProfileLoading(true);
+    setMiniProfileData(null);
+    try {
+      if (isCandidate) {
+        const res = await api.get<any>(`/company/public/${conv.empresaId}`);
+        setMiniProfileData({ kind: 'company', ...(res.data || {}), nombre: res.data?.nombre || conv.empresaNombre });
+      } else if (conv.postulacionId) {
+        const res = await api.get<any>(`/applications/${conv.postulacionId}`);
+        setMiniProfileData({ kind: 'candidate', ...(res.data || {}), candidateName: res.data?.candidateName || conv.candidatoNombre });
+      } else {
+        setMiniProfileData({ kind: 'candidate', candidateName: conv.candidatoNombre, vacancyTitle: conv.vacanteTitulo });
+      }
+    } catch {
+      setMiniProfileData(
+        isCandidate
+          ? { kind: 'company', nombre: conv.empresaNombre, vacanteTitulo: conv.vacanteTitulo }
+          : { kind: 'candidate', candidateName: conv.candidatoNombre, vacancyTitle: conv.vacanteTitulo }
+      );
+    } finally {
+      setMiniProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setMiniProfileOpen(false);
+  }, [activeId]);
+
   return (
     <div
-      className={`flex h-[calc(100dvh-9rem)] min-h-[460px] overflow-hidden rounded-2xl border border-[#DED7C8] dark:border-[#232D42] bg-[#FCFBF8] dark:bg-[#111622] ${className}`}
+      className={`relative flex h-[calc(100dvh-9rem)] min-h-[460px] overflow-hidden rounded-2xl border border-[#DED7C8] dark:border-[#232D42] bg-[#FCFBF8] dark:bg-[#111622] ${className}`}
     >
+      {/* Mini Perfil Deslizable a la Izquierda (Candidato o Empresa) */}
+      {miniProfileOpen && activeConversation && (
+        <aside className="absolute inset-y-0 left-0 z-30 w-full sm:w-[320px] bg-[#FCFBF8] dark:bg-[#0E1420] border-r-2 border-[#0B5D46]/40 dark:border-[#C8FF45]/40 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+          <div className="px-4 py-3 border-b border-[#DED7C8] dark:border-[#232D42] flex items-center justify-between gap-2 bg-[#EFE5D4]/60 dark:bg-[#141C2E]">
+            <div className="flex items-center gap-2 min-w-0">
+              {isCandidate ? (
+                <Building2 className="w-4 h-4 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+              ) : (
+                <User className="w-4 h-4 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+              )}
+              <span className="text-xs font-black uppercase tracking-wider text-[#3A2818] dark:text-[#F1F2EC] truncate">
+                {isCandidate ? 'Mini Perfil de Empresa' : 'Mini Perfil del Candidato'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMiniProfileOpen(false)}
+              className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 cursor-pointer"
+              aria-label="Cerrar mini perfil"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+            {miniProfileLoading ? (
+              <div className="py-10 flex flex-col items-center justify-center gap-2 text-slate-500">
+                <Loader2 className="w-5 h-5 animate-spin text-[#0B5D46] dark:text-[#C8FF45]" />
+                <span>Cargando perfil...</span>
+              </div>
+            ) : miniProfileData?.kind === 'company' ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#0B5D46] text-white font-black text-base flex items-center justify-center shrink-0">
+                    {(miniProfileData.nombre || 'EM').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-black text-sm text-[#090A0C] dark:text-[#F1F2EC] truncate">
+                      {miniProfileData.nombre}
+                    </h4>
+                    <p className="text-[11px] text-[#0B5D46] dark:text-[#C8FF45] font-semibold truncate">
+                      {miniProfileData.sector || 'Empresa afiliada'}
+                    </p>
+                  </div>
+                </div>
+                {miniProfileData.descripcion && (
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {miniProfileData.descripcion}
+                  </p>
+                )}
+                <div className="space-y-2 pt-1">
+                  {miniProfileData.correoContacto && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Mail className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span className="truncate">{miniProfileData.correoContacto}</span>
+                    </div>
+                  )}
+                  {miniProfileData.telefonoContacto && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-mono">
+                      <Phone className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span>{miniProfileData.telefonoContacto}</span>
+                    </div>
+                  )}
+                  {miniProfileData.sitioWeb && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Globe className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span className="truncate">{miniProfileData.sitioWeb}</span>
+                    </div>
+                  )}
+                  {miniProfileData.direccion && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <MapPin className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span>{miniProfileData.direccion}</span>
+                    </div>
+                  )}
+                </div>
+                {Array.isArray(miniProfileData.vacantesActivas) && miniProfileData.vacantesActivas.length > 0 && (
+                  <div className="pt-2 border-t border-[#DED7C8] dark:border-[#232D42] space-y-1.5">
+                    <span className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-1">
+                      <Briefcase className="w-3 h-3" /> Vacantes activas ({miniProfileData.vacantesActivas.length})
+                    </span>
+                    {miniProfileData.vacantesActivas.slice(0, 5).map((v: any) => (
+                      <div key={v.id} className="p-2 rounded-lg bg-white dark:bg-white/[0.04] border border-[#DED7C8]/70 dark:border-white/10">
+                        <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{v.titulo}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{v.departamento || 'General'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-600 text-white font-black text-base flex items-center justify-center shrink-0">
+                    {(miniProfileData?.candidateName || activeConversation.candidatoNombre).slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-black text-sm text-[#090A0C] dark:text-[#F1F2EC] truncate">
+                      {miniProfileData?.candidateName || activeConversation.candidatoNombre}
+                    </h4>
+                    <p className="text-[11px] text-[#0B5D46] dark:text-[#C8FF45] font-semibold truncate">
+                      {miniProfileData?.vacancyTitle || activeConversation.vacanteTitulo}
+                    </p>
+                  </div>
+                </div>
+                {typeof miniProfileData?.mlScore === 'number' && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Afinidad ML
+                    </span>
+                    <span className="font-mono font-black text-sm text-emerald-700 dark:text-[#C8FF45]">
+                      {miniProfileData.mlScore}%
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {miniProfileData?.candidateEmail && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Mail className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span className="truncate">{miniProfileData.candidateEmail}</span>
+                    </div>
+                  )}
+                  {miniProfileData?.candidatePhone && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-mono">
+                      <Phone className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                      <span>{miniProfileData.candidatePhone}</span>
+                    </div>
+                  )}
+                  {miniProfileData?.status && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-slate-500">Estado:</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 font-bold text-[10px] uppercase">
+                        {miniProfileData.status}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {Array.isArray(miniProfileData?.mlBreakdown?.matchingSkills) &&
+                  miniProfileData.mlBreakdown.matchingSkills.length > 0 && (
+                    <div className="pt-2 border-t border-[#DED7C8] dark:border-[#232D42] space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block">
+                        Competencias clave
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {miniProfileData.mlBreakdown.matchingSkills.slice(0, 10).map((sk: string) => (
+                          <span
+                            key={sk}
+                            className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold"
+                          >
+                            {sk}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
       {/* Lista de conversaciones */}
       <aside
         className={`${mobileThread ? 'hidden md:flex' : 'flex'} w-full md:w-[320px] shrink-0 flex-col border-r border-[#DED7C8] dark:border-[#232D42]`}
@@ -272,14 +484,24 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ focusApplicationId, classN
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-[#090A0C] dark:text-[#F1F2EC] truncate">
-                  {counterpartName(activeConversation)}
-                </p>
-                <p className="text-[11px] text-[#0B5D46] dark:text-[#C8FF45] truncate">
-                  {activeConversation.vacanteTitulo}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => openMiniProfile(activeConversation)}
+                className="min-w-0 flex-1 flex items-center gap-2.5 text-left group cursor-pointer rounded-xl px-1.5 py-1 -mx-1.5 hover:bg-[#EFE5D4]/60 dark:hover:bg-white/[0.06] transition-colors"
+                title={isCandidate ? 'Ver mini perfil de la empresa' : 'Ver mini perfil del candidato'}
+              >
+                <div className="w-8 h-8 rounded-full bg-[#0B5D46] text-white font-black text-xs flex items-center justify-center shrink-0">
+                  {counterpartName(activeConversation).slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#090A0C] dark:text-[#F1F2EC] group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] truncate transition-colors">
+                    {counterpartName(activeConversation)}
+                  </p>
+                  <p className="text-[11px] text-[#0B5D46] dark:text-[#C8FF45] truncate">
+                    {activeConversation.vacanteTitulo} · <span className="underline decoration-dotted">Ver perfil</span>
+                  </p>
+                </div>
+              </button>
               {activeConversation.telegramVinculado ? (
                 <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono-tabular uppercase tracking-wider px-2 py-1 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/25">
                   <TelegramIcon className="w-3 h-3" /> También por Telegram

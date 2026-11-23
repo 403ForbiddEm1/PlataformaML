@@ -24,10 +24,68 @@ export interface SendEmailOptions {
   html?: string;
   replyTo?: string;
   senderName?: string;
+  companyLogoUrl?: string;
   usuarioId?: string;
   empresaId?: string;
   postulacionId?: string;
   tipo?: string;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export function buildBrandedEmailHtml(params: {
+  companyName: string;
+  companyLogoUrl?: string;
+  subject: string;
+  text: string;
+}): string {
+  const { companyName, companyLogoUrl, subject, text } = params;
+  const initials = companyName.trim().slice(0, 2).toUpperCase() || 'ML';
+  const safeName = escapeHtml(companyName);
+  const safeSubject = escapeHtml(subject);
+  const safeBody = escapeHtml(text).replace(/\n/g, '<br/>');
+  const logoHtml =
+    companyLogoUrl && /^(https?:\/\/|data:image\/)/i.test(companyLogoUrl)
+      ? `<img src="${companyLogoUrl}" alt="${safeName}" style="width:48px;height:48px;border-radius:12px;object-fit:cover;border:2px solid rgba(255,255,255,0.25);display:block;" />`
+      : `<div style="width:48px;height:48px;border-radius:12px;background:#C8FF45;color:#090A0C;font-weight:900;font-size:18px;line-height:48px;text-align:center;font-family:Arial,sans-serif;">${escapeHtml(initials)}</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:24px;background:#F4F1EA;font-family:Arial,Helvetica,sans-serif;color:#1E293B;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:580px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #DED7C8;">
+    <tr>
+      <td style="background:#0B5D46;padding:20px 24px;">
+        <table role="presentation" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="padding-right:14px;vertical-align:middle;">${logoHtml}</td>
+            <td style="vertical-align:middle;">
+              <div style="font-size:18px;font-weight:800;color:#FFFFFF;letter-spacing:-0.2px;">${safeName}</div>
+              <div style="font-size:11px;color:#C8FF45;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Notificación de Selección · PlataformaML</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:24px;">
+        <h2 style="margin:0 0 14px 0;font-size:16px;color:#0F172A;">${safeSubject}</h2>
+        <div style="font-size:14px;line-height:1.65;color:#334155;">${safeBody}</div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:14px 24px;background:#FAF7F2;border-top:1px solid #EFE5D4;font-size:11px;color:#64748B;">
+        Enviado automáticamente por <strong>${safeName}</strong> a través de PlataformaML.
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
 function buildFromHeader(senderName?: string): string {
@@ -149,7 +207,7 @@ export const emailService = {
   },
 
   async sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string }> {
-    const { to, subject, text, html, replyTo, senderName, usuarioId, empresaId, postulacionId, tipo } = options;
+    const { to, subject, text, html, replyTo, senderName, companyLogoUrl, usuarioId, empresaId, postulacionId, tipo } = options;
 
     let resolvedSenderName = senderName;
     let resolvedReplyTo = replyTo;
@@ -166,6 +224,15 @@ export const emailService = {
         resolvedReplyTo = resolvedReplyTo || emp.correoContacto || undefined;
       }
     }
+
+    const brandedHtml =
+      html ||
+      buildBrandedEmailHtml({
+        companyName: resolvedSenderName || process.env.APP_NAME || 'PlataformaML',
+        companyLogoUrl,
+        subject,
+        text,
+      });
 
     let notifRecord: { id: string } | null = null;
     if (usuarioId) {
@@ -192,7 +259,7 @@ export const emailService = {
       to,
       subject,
       text,
-      html,
+      html: brandedHtml,
       replyTo: resolvedReplyTo,
       senderName: resolvedSenderName,
     });

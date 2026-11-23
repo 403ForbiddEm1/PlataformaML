@@ -524,4 +524,37 @@ export const applicationsService = {
 
     return normalizeApplication(app);
   },
+
+  async quickNotify(
+    applicationId: string,
+    payload: {
+      channel: 'AMBOS' | 'TELEGRAM' | 'CORREO';
+      status?: string;
+      message?: string;
+      companyLogoUrl?: string;
+    }
+  ): Promise<{ application: Application; sentChannels: string[] }> {
+    const res = await api.post<any>(`/applications/${applicationId}/quick-notify`, payload);
+    const data = (res.data as any)?.data || res.data;
+    return {
+      application: normalizeApplication(data?.application || data),
+      sentChannels: Array.isArray(data?.sentChannels) ? data.sentChannels : [],
+    };
+  },
+
+  async bulkRejectBelow50(payload: {
+    vacancyId?: string;
+    threshold?: number;
+    channel?: 'AMBOS' | 'TELEGRAM' | 'CORREO';
+    companyLogoUrl?: string;
+  }): Promise<{ rejectedCount: number; ids: string[] }> {
+    const res = await api.post<any>('/applications/bulk-reject-below-50', payload);
+    const data = (res.data as any)?.data || res.data;
+    return {
+      rejectedCount: Number(data?.rejectedCount || 0),
+      ids: Array.isArray(data?.ids) ? data.ids : [],
+    };
+  },
 };
+
+export type NotifyChannel = 'AMBOS' | 'TELEGRAM' | 'CORREO';

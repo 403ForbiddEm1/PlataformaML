@@ -21,6 +21,9 @@ import {
 import { mlService } from '../services/ml.service';
 import { notificationService } from '../services/notification.service';
 import { auditService } from '../services/audit.service';
+import { emailService } from '../services/email.service';
+import { chatService } from '../services/chat.service';
+import { z } from 'zod';
 
 function formatApplication(app: any): ApplicationResponse {
   const breakdown: MLFactorBreakdown = app.prediccionML?.datosCrudosPrediccion || {
@@ -520,6 +523,229 @@ export const selectionController = {
       res.json({
         success: true,
         data: formatApplication(recargada),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async quickNotify(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user;
+      if (!user || !user.empresaId) throw new HttpError(403, 'Acceso denegado');
+
+      const id = req.params.id as string;
+      const body = z
+        .object({
+          channel: z.enum(['AMBOS', 'TELEGRAM', 'CORREO']).default('AMBOS'),
+          status: z.string().optional(),
+          message: z.string().max(1500).optional(),
+          companyLogoUrl: z.string().max(500000).optional(),
+        })
+        .parse(req.body);
+
+      const postulacion = await prisma.postulacion.findFirst({
+        where: { id, empresaId: user.empresaId },
+        include: {
+          vacante: { include: { empresa: true } },
+          candidato: true,
+          conversacion: true,
+        },
+      });
+
+      if (!postulacion) throw new HttpError(404, 'Postulación no encontrada');
+
+      const empresaNombre = postulacion.vacante.empresa.nombre;
+      const vacanteTitulo = postulacion.vacante.titulo;
+      const candidatoNombre = `${postulacion.candidato.nombre} ${postulacion.candidato.apellido}`.trim();
+
+      let statusLabel = body.status || estadoPostulacionToFrontend(postulacion.estado);
+      if (body.status) {
+        const estadoAnterior = postulacion.estado;
+        const nuevoEstado = estadoPostulacionFromFrontend(body.status);
+        await prisma.$transaction(async (tx) => {
+          await tx.postulacion.update({ where: { id: postulacion.id }, data: { estado: nuevoEstado } });
+          await tx.historialEstadoPostulacion.create({
+            data: {
+              postulacionId: postulacion.id,
+              estadoAnterior,
+              estadoNuevo: nuevoEstado,
+              nota: body.message || `Notificación rápida (${body.channel})`,
+              cambiadoPorId: user.id,
+            },
+          });
+        });
+      }
+
+      const defaultMsg =
+        statusLabel === 'Preseleccionado'
+          ? `Hola ${candidatoNombre}, ¡buenas noticias! En ${empresaNombre} hemos preseleccionado tu perfil para la vacante "${vacanteTitulo}". Pronto nos pondremos en contacto contigo.`
+          : statusLabel === 'Entrevista'
+          ? `Hola ${candidatoNombre}, en ${empresaNombre} queremos invitarte a una entrevista para la vacante "${vacanteTitulo}". Por favor responde a este mensaje para coordinar horario.`
+          : statusLabel === 'Descartado' || statusLabel === 'Rechazado'
+          ? `Hola ${candidatoNombre}, agradecemos tu interés en "${vacanteTitulo}" en ${empresaNombre}. En esta oportunidad continuaremos con otros perfiles más alineados a la vacante.`
+          : `Hola ${candidatoNombre}, tienes una actualización en tu postulación para "${vacanteTitulo}" en ${empresaNombre} (Estado: ${statusLabel}).`;
+
+      const textoFinal = (body.message || '').trim() || defaultMsg;
+      const sentChannels: string[] = [];
+
+      // 1. Telegram / Chat automático
+      if (body.channel === 'TELEGRAM' || body.channel === 'AMBOS') {
+        let convId = postulacion.conversacion?.id;
+        if (!convId) {
+          const createdConv = await prisma.conversacion.create({
+            data: {
+              postulacionId: postulacion.id,
+              empresaId: postulacion.empresaId,
+              candidatoId: postulacion.candidatoId,
+            },
+          });
+          convId = createdConv.id;
+        }
+        await chatService
+          .enviarMensaje(
+            { id: user.id, rol: user.rol, empresaId: user.empresaId },
+            convId,
+            textoFinal,
+          )
+          .then(() => sentChannels.push('Telegram / Chat'))
+          .catch((e) => console.warn('[QUICK_NOTIFY_CHAT]', e?.message));
+      }
+
+      // 2. Correo automático con logo y nombre de la empresa
+      if (body.channel === 'CORREO' || body.channel === 'AMBOS') {
+        const emailRes = await emailService.sendEmail({
+          to: postulacion.candidato.correo,
+          subject: `${empresaNombre} — Actualización sobre "${vacanteTitulo}"`,
+          text: textoFinal,
+          senderName: empresaNombre,
+          replyTo: postulacion.vacante.empresa.correoContacto || undefined,
+          companyLogoUrl: body.companyLogoUrl,
+          usuarioId: postulacion.candidato.id,
+          empresaId: postulacion.empresaId,
+          postulacionId: postulacion.id,
+          tipo: 'NOTIFICACION_RAPIDA',
+        });
+        if (emailRes.success) sentChannels.push('Correo');
+      }
+
+      const recargada = await prisma.postulacion.findUnique({
+        where: { id: postulacion.id },
+        include: postulacionInclude,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          application: formatApplication(recargada),
+          sentChannels,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async bulkRejectBelow50(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user;
+      if (!user || !user.empresaId) throw new HttpError(403, 'Acceso denegado');
+
+      const body = z
+        .object({
+          vacancyId: z.string().uuid().optional(),
+          threshold: z.number().min(1).max(99).default(50),
+          channel: z.enum(['AMBOS', 'TELEGRAM', 'CORREO']).default('AMBOS'),
+          companyLogoUrl: z.string().max(500000).optional(),
+        })
+        .parse(req.body || {});
+
+      const thresholdRatio = body.threshold / 100;
+
+      const candidatas = await prisma.postulacion.findMany({
+        where: {
+          empresaId: user.empresaId,
+          ...(body.vacancyId ? { vacanteId: body.vacancyId } : {}),
+          estado: { notIn: [EstadoPostulacion.RECHAZADA, EstadoPostulacion.CONTRATADA] },
+          prediccionML: {
+            puntajeAfinidad: { lt: thresholdRatio },
+          },
+        },
+        include: {
+          vacante: { include: { empresa: true } },
+          candidato: true,
+          conversacion: true,
+          prediccionML: true,
+        },
+      });
+
+      const rejectedIds: string[] = [];
+
+      for (const p of candidatas) {
+        const empresaNombre = p.vacante.empresa.nombre;
+        const vacanteTitulo = p.vacante.titulo;
+        const candidatoNombre = `${p.candidato.nombre} ${p.candidato.apellido}`.trim();
+        const texto = `Hola ${candidatoNombre}, agradecemos tu postulación a "${vacanteTitulo}" en ${empresaNombre}. Tras la evaluación del proceso, en esta ocasión continuaremos con perfiles más alineados a los requisitos actuales. Te deseamos mucho éxito en tus próximas postulaciones.`;
+
+        await prisma.$transaction(async (tx) => {
+          await tx.postulacion.update({
+            where: { id: p.id },
+            data: { estado: EstadoPostulacion.RECHAZADA },
+          });
+          await tx.historialEstadoPostulacion.create({
+            data: {
+              postulacionId: p.id,
+              estadoAnterior: p.estado,
+              estadoNuevo: EstadoPostulacion.RECHAZADA,
+              nota: `Descarte masivo automático (< ${body.threshold}% afinidad ML)`,
+              cambiadoPorId: user.id,
+            },
+          });
+        });
+
+        rejectedIds.push(p.id);
+
+        if (body.channel === 'TELEGRAM' || body.channel === 'AMBOS') {
+          let convId = p.conversacion?.id;
+          if (!convId) {
+            const c = await prisma.conversacion
+              .create({
+                data: { postulacionId: p.id, empresaId: p.empresaId, candidatoId: p.candidatoId },
+              })
+              .catch(() => null);
+            convId = c?.id;
+          }
+          if (convId) {
+            await chatService
+              .enviarMensaje({ id: user.id, rol: user.rol, empresaId: user.empresaId }, convId, texto)
+              .catch(() => {});
+          }
+        }
+
+        if (body.channel === 'CORREO' || body.channel === 'AMBOS') {
+          await emailService
+            .sendEmail({
+              to: p.candidato.correo,
+              subject: `${empresaNombre} — Resultado de tu postulación a "${vacanteTitulo}"`,
+              text: texto,
+              senderName: empresaNombre,
+              replyTo: p.vacante.empresa.correoContacto || undefined,
+              companyLogoUrl: body.companyLogoUrl,
+              usuarioId: p.candidato.id,
+              empresaId: p.empresaId,
+              postulacionId: p.id,
+              tipo: 'DESCARTE_MASIVO',
+            })
+            .catch(() => {});
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          rejectedCount: rejectedIds.length,
+          ids: rejectedIds,
+        },
       });
     } catch (err) {
       next(err);
