@@ -28,6 +28,24 @@ enum EstadoEmpresa {
   RECHAZADA
 }
 
+enum TipoCatalogo {
+  DEPARTAMENTO
+  ESPECIALIDAD
+  CARRERA
+}
+
+model CatalogoOpcion {
+  id                 String       @id @default(uuid()) @db.Uuid
+  tipo               TipoCatalogo
+  nombre             String
+  creadoPorEmpresaId String?      @db.Uuid
+  creadoEn           DateTime     @default(now())
+
+  @@unique([tipo, nombre])
+  @@index([tipo])
+  @@map("catalogo_opciones")
+}
+
 // Por qué una empresa quedó SUSPENDIDA
 enum MotivoDesactivacion {
   INACTIVIDAD // 3 meses sin publicar vacantes (automático)
@@ -138,6 +156,8 @@ model Empresa {
   telefonoContacto     String?
   sitioWeb             String?
   dominio              String? @unique
+  descripcion          String? @db.Text
+  visibilidadPerfil    String  @default("PUBLICO") // PUBLICO | SOLO_REGISTRADOS | NADIE
 
   // Ubicación (para el filtro "más cerca")
   direccion String?

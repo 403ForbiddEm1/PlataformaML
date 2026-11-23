@@ -39,6 +39,8 @@ export async function actualizarEmpresa(
     telefonoContacto?: string;
     sitioWeb?: string;
     direccion?: string;
+    descripcion?: string;
+    visibilidadPerfil?: string;
     latitud?: number;
     longitud?: number;
   },

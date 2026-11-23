@@ -3,6 +3,7 @@ import { Application, ApplicationStatus, Vacancy, MLFactorBreakdown, Employee, T
 import { applicationsService } from '@/services/applications.service';
 import { vacanciesService } from '@/services/vacancies.service';
 import { employeesService } from '@/services/employees.service';
+import { catalogService, type CatalogData, type CatalogOptionType } from '@/services/catalog.service';
 import { api, USE_MOCK } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -132,7 +133,24 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
   // Create vacancy modal state (RF02)
   const [isCreateVacancyOpen, setIsCreateVacancyOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newDepartment, setNewDepartment] = useState('Datos y Analítica');
+  const [newDepartment, setNewDepartment] = useState('Tecnología & Desarrollo de Software');
+  const [newSpecialty, setNewSpecialty] = useState('');
+  const [newCareer, setNewCareer] = useState('');
+  const [catalog, setCatalog] = useState<CatalogData>({
+    departamentos: [
+      'Tecnología & Desarrollo de Software',
+      'Datos, Analítica & Machine Learning',
+      'Talento Humano & Recursos Humanos',
+      'Administración & Finanzas',
+      'Marketing Digital & Comunicaciones',
+      'Operaciones, Logística & Cadena de Suministro',
+    ],
+    especialidades: [],
+    carreras: [],
+  });
+  const [addingCatalogType, setAddingCatalogType] = useState<CatalogOptionType | null>(null);
+  const [newCatalogOptionName, setNewCatalogOptionName] = useState('');
+  const [isSavingCatalogOption, setIsSavingCatalogOption] = useState(false);
   const [newLocation, setNewLocation] = useState('Santo Domingo, RD');
   const [newWorkMode, setNewWorkMode] = useState<'Híbrido' | 'Presencial' | 'Remoto'>('Híbrido');
   const [newType, setNewType] = useState<'Tiempo completo' | 'Medio tiempo' | 'Pasantía'>('Tiempo completo');
@@ -145,14 +163,19 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
   const loadData = async () => {
     try {
-      const [apps, vacs, emps] = await Promise.all([
+      const [apps, vacs, emps, cat] = await Promise.all([
         applicationsService.getAll(),
         vacanciesService.getAll(),
         employeesService.getAll(user?.empresaId || user?.companyId || undefined),
+        catalogService.getCatalog().catch(() => null),
       ]);
       setApplications(apps);
       setVacancies(vacs);
       setEmployees(emps);
+      if (cat && cat.departamentos.length > 0) {
+        setCatalog(cat);
+        setNewDepartment((prev) => (cat.departamentos.includes(prev) ? prev : cat.departamentos[0]));
+      }
     } catch {
       showToast('Error', 'No se pudieron cargar los datos de talento humano.', 'error');
     }
@@ -659,6 +682,15 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
       const companyId = user?.empresaId || user?.companyId || 'emp-local';
       const companyName = user?.empresaNombre || user?.companyName || 'Comercio1';
 
+      const extraRequirements: string[] = [];
+      if (newSpecialty) extraRequirements.push(`Especialidad: ${newSpecialty}`);
+      if (newCareer) extraRequirements.push(`Carrera / Formación: ${newCareer}`);
+
+      const baseRequirements = newRequirements
+        .split('\n')
+        .map((r) => r.trim())
+        .filter(Boolean);
+
       const created = await vacanciesService.create({
         empresaId: companyId,
         companyId: companyId,
@@ -671,10 +703,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
         type: newType,
         status: 'Abierta',
         description: newDescription.trim(),
-        requirements: newRequirements
-          .split('\n')
-          .map((r) => r.trim())
-          .filter(Boolean),
+        requirements: [...extraRequirements, ...baseRequirements],
         requiredSkills: newSkills
           .split(',')
           .map((s) => s.trim())
@@ -688,6 +717,8 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
       setIsCreateVacancyOpen(false);
       // Reset form
       setNewTitle('');
+      setNewSpecialty('');
+      setNewCareer('');
       setNewDescription('');
       setNewSkills('');
       setNewRequirements('');
@@ -2104,23 +2135,34 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                     </p>
                   </div>
 
-                  {/* EDITABLE SECTION 2: Metadatos en Grilla Neumórfica (Departamento & Ubicación) */}
+                  {/* EDITABLE SECTION 2: Metadatos en Grilla Neumórfica (Departamento, Especialidad, Carrera & Ubicación) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                        Departamento o Área *
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Departamento o Área *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingCatalogType(addingCatalogType === 'DEPARTAMENTO' ? null : 'DEPARTAMENTO');
+                            setNewCatalogOptionName('');
+                          }}
+                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          + Agregar departamento
+                        </button>
+                      </div>
                       <select
                         value={newDepartment}
                         onChange={(e) => setNewDepartment(e.target.value)}
                         className="neu-inset-field w-full text-xs font-semibold text-slate-800 dark:text-slate-200 px-3.5 py-3 rounded-xl outline-none cursor-pointer"
                       >
-                        <option value="Datos y Analítica">Datos y Analítica</option>
-                        <option value="Inteligencia de Negocios">Inteligencia de Negocios</option>
-                        <option value="Tecnología & Desarrollo">Tecnología & Desarrollo</option>
-                        <option value="Talento Humano">Talento Humano</option>
-                        <option value="Operaciones & Logística">Operaciones & Logística</option>
-                        <option value="Diseño UI/UX">Diseño UI/UX</option>
+                        {catalog.departamentos.map((dep) => (
+                          <option key={dep} value={dep}>
+                            {dep}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -2137,7 +2179,131 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                         required
                       />
                     </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Especialidad
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingCatalogType(addingCatalogType === 'ESPECIALIDAD' ? null : 'ESPECIALIDAD');
+                            setNewCatalogOptionName('');
+                          }}
+                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          + Agregar especialidad
+                        </button>
+                      </div>
+                      <select
+                        value={newSpecialty}
+                        onChange={(e) => setNewSpecialty(e.target.value)}
+                        className="neu-inset-field w-full text-xs font-semibold text-slate-800 dark:text-slate-200 px-3.5 py-3 rounded-xl outline-none cursor-pointer"
+                      >
+                        <option value="">Selecciona una especialidad (opcional)</option>
+                        {catalog.especialidades.map((esp) => (
+                          <option key={esp} value={esp}>
+                            {esp}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Carrera / Formación Sugerida
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingCatalogType(addingCatalogType === 'CARRERA' ? null : 'CARRERA');
+                            setNewCatalogOptionName('');
+                          }}
+                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          + Agregar carrera
+                        </button>
+                      </div>
+                      <select
+                        value={newCareer}
+                        onChange={(e) => setNewCareer(e.target.value)}
+                        className="neu-inset-field w-full text-xs font-semibold text-slate-800 dark:text-slate-200 px-3.5 py-3 rounded-xl outline-none cursor-pointer"
+                      >
+                        <option value="">Selecciona una carrera (opcional)</option>
+                        {catalog.carreras.map((car) => (
+                          <option key={car} value={car}>
+                            {car}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
+                  {/* Inline: Agregar nuevo Departamento / Especialidad / Carrera compartido en BD */}
+                  {addingCatalogType && (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        type="text"
+                        value={newCatalogOptionName}
+                        onChange={(e) => setNewCatalogOptionName(e.target.value)}
+                        placeholder={
+                          addingCatalogType === 'DEPARTAMENTO'
+                            ? 'Ej. Robótica y Automatización'
+                            : addingCatalogType === 'ESPECIALIDAD'
+                            ? 'Ej. Ingeniería de Prompts / LLMs'
+                            : 'Ej. Ingeniería en Mecatrónica'
+                        }
+                        className="flex-1 px-3 py-2 rounded-lg text-xs bg-white dark:bg-slate-900 border border-emerald-500/40 text-slate-900 dark:text-slate-100 outline-none"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="primary"
+                          isLoading={isSavingCatalogOption}
+                          onClick={async () => {
+                            const val = newCatalogOptionName.trim();
+                            if (val.length < 2) return;
+                            setIsSavingCatalogOption(true);
+                            try {
+                              const saved = await catalogService.addOption(addingCatalogType, val);
+                              const fresh = await catalogService.getCatalog();
+                              setCatalog(fresh);
+                              if (addingCatalogType === 'DEPARTAMENTO') setNewDepartment(saved.nombre);
+                              if (addingCatalogType === 'ESPECIALIDAD') setNewSpecialty(saved.nombre);
+                              if (addingCatalogType === 'CARRERA') setNewCareer(saved.nombre);
+                              showToast(
+                                'Opción agregada al catálogo global',
+                                `"${saved.nombre}" ya está guardada en la base de datos y disponible para todas las empresas.`,
+                                'success'
+                              );
+                              setAddingCatalogType(null);
+                              setNewCatalogOptionName('');
+                            } catch (err: any) {
+                              showToast('Error', err?.message || 'No se pudo agregar la opción.', 'error');
+                            } finally {
+                              setIsSavingCatalogOption(false);
+                            }
+                          }}
+                        >
+                          Guardar en BD
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setAddingCatalogType(null);
+                            setNewCatalogOptionName('');
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* EDITABLE SECTION 3: Selectores Neumórficos Interactivos (Modalidad y Tipo) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-4 rounded-2xl bg-[#f5ede2]/60 dark:bg-slate-900/40 border border-amber-200/50 dark:border-slate-800">

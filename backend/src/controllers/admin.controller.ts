@@ -9,8 +9,9 @@ import crypto from 'crypto';
 import { emailService } from '../services/email.service';
 
 const updateCompanyStatusSchema = z.object({
-  status: z.enum(['ACTIVA', 'SUSPENDIDA', 'RECHAZADA', 'PENDIENTE_APROBACION']),
+  status: z.enum(['ACTIVA', 'SUSPENDIDA', 'RECHAZADA', 'PENDIENTE_APROBACION']).optional(),
   rejectionReason: z.string().optional(),
+  activaHasta: z.string().nullable().optional(),
 });
 
 const inviteUserSchema = z.object({
@@ -49,16 +50,22 @@ export const adminController = {
       if (!empresa) throw new HttpError(404, 'Empresa no encontrada');
 
       const estadoAnterior = empresa.estado;
-      const nuevoEstado = body.status as EstadoEmpresa;
+      const nuevoEstado = (body.status as EstadoEmpresa) || empresa.estado;
+
+      const updateData: any = {
+        estado: nuevoEstado,
+        motivoRechazo: body.rejectionReason !== undefined ? body.rejectionReason : empresa.motivoRechazo,
+        aprobadaEn: nuevoEstado === EstadoEmpresa.ACTIVA ? (empresa.aprobadaEn || new Date()) : empresa.aprobadaEn,
+        aprobadaPorId: nuevoEstado === EstadoEmpresa.ACTIVA ? (empresa.aprobadaPorId || user?.id) : empresa.aprobadaPorId,
+      };
+
+      if (body.activaHasta !== undefined) {
+        updateData.activaHasta = body.activaHasta ? new Date(body.activaHasta) : null;
+      }
 
       const actualizada = await prisma.empresa.update({
         where: { id },
-        data: {
-          estado: nuevoEstado,
-          motivoRechazo: body.rejectionReason || null,
-          aprobadaEn: nuevoEstado === EstadoEmpresa.ACTIVA ? new Date() : empresa.aprobadaEn,
-          aprobadaPorId: nuevoEstado === EstadoEmpresa.ACTIVA ? user?.id : empresa.aprobadaPorId,
-        },
+        data: updateData,
       });
 
       await auditService.log({
@@ -95,6 +102,63 @@ export const adminController = {
         success: true,
         data: logs,
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getUserProfileReadOnly(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid().parse(req.params.id);
+      const usuario = await prisma.usuario.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          correo: true,
+          nombre: true,
+          apellido: true,
+          telefono: true,
+          fotoRuta: true,
+          rol: true,
+          activo: true,
+          creadoEn: true,
+          ultimoAccesoEn: true,
+          empresa: {
+            select: {
+              id: true,
+              nombre: true,
+              sector: true,
+              estado: true,
+              identificacionFiscal: true,
+              correoContacto: true,
+              telefonoContacto: true,
+            },
+          },
+          perfilCandidato: {
+            include: {
+              educacion: true,
+              experiencia: true,
+              documentos: {
+                where: { vigente: true },
+                select: { id: true, tipo: true, nombreArchivo: true, creadoEn: true },
+              },
+            },
+          },
+          postulaciones: {
+            select: {
+              id: true,
+              estado: true,
+              postuladaEn: true,
+              vacante: { select: { id: true, titulo: true, empresa: { select: { nombre: true } } } },
+              prediccionML: { select: { puntajeAfinidad: true } },
+            },
+            orderBy: { postuladaEn: 'desc' },
+            take: 20,
+          },
+        },
+      });
+      if (!usuario) throw new HttpError(404, 'Usuario no encontrado');
+      res.json({ success: true, data: usuario });
     } catch (err) {
       next(err);
     }

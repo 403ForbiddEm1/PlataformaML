@@ -7,6 +7,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { CompanyPublicProfileModal } from '@/components/company/CompanyPublicProfileModal';
 import {
   Search,
   MapPin,
@@ -43,6 +44,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
   const [workModeFilter, setWorkModeFilter] = useState('all');
   const [companyFilter, setCompanyFilter] = useState('all');
   const [selectedModalVacancy, setSelectedModalVacancy] = useState<Vacancy | null>(null);
+  const [viewCompanyProfile, setViewCompanyProfile] = useState<{ id?: string; name?: string } | null>(null);
   const [slideState, setSlideState] = useState<{
     current: number;
     previous: number | null;
@@ -244,12 +246,16 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedModalVacancy(vac);
+                      setViewCompanyProfile({
+                        id: vac.empresaId || vac.companyId,
+                        name: vac.empresaNombre || vac.companyName || 'PlataformaML Corporativo',
+                      });
                     }}
-                    className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-[11px] font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none group-hover:bg-[#DDD0B8] dark:group-hover:bg-[#332920] transition-colors"
+                    title="Ver perfil de la empresa"
+                    className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-[11px] font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none hover:bg-[#DDD0B8] dark:hover:bg-[#332920] transition-colors"
                   >
                     <Folder className="w-3.5 h-3.5 text-[#7D5634] dark:text-[#C4A482]" />
-                    <span className="truncate max-w-[170px] sm:max-w-[220px]">
+                    <span className="truncate max-w-[170px] sm:max-w-[220px] underline decoration-dotted underline-offset-2">
                       {vac.empresaNombre || 'PlataformaML Corporativo'}
                     </span>
                     <span className="text-[#9C7E5E] dark:text-[#7D654F]">·</span>
@@ -343,10 +349,21 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
           <div className="space-y-5">
             {/* Metadatos del cargo */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
-                <Building2 className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
-                {selectedModalVacancy.empresaNombre || 'PlataformaML Corporativo'}
-              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setViewCompanyProfile({
+                    id: selectedModalVacancy.empresaId || selectedModalVacancy.companyId,
+                    name: selectedModalVacancy.empresaNombre || selectedModalVacancy.companyName || 'PlataformaML Corporativo',
+                  })
+                }
+                className="press inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0B5D46]/12 hover:bg-[#0B5D46]/20 dark:bg-[#C8FF45]/12 dark:hover:bg-[#C8FF45]/20 text-[#0B5D46] dark:text-[#C8FF45] border border-[#0B5D46]/30 dark:border-[#C8FF45]/35 font-bold cursor-pointer"
+                title="Haz clic para ver el perfil de la empresa"
+              >
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{selectedModalVacancy.empresaNombre || 'PlataformaML Corporativo'}</span>
+                <span className="text-[10px] underline ml-0.5">Ver perfil</span>
+              </button>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
                 <MapPin className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
                 {selectedModalVacancy.location}
@@ -444,6 +461,14 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
           </div>
         )}
       </Modal>
+
+      {/* Modal público de perfil de empresa (solo lectura, accesible para cualquier persona) */}
+      <CompanyPublicProfileModal
+        isOpen={Boolean(viewCompanyProfile)}
+        onClose={() => setViewCompanyProfile(null)}
+        companyId={viewCompanyProfile?.id}
+        fallbackName={viewCompanyProfile?.name}
+      />
 
       <Footer />
     </div>

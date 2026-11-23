@@ -140,7 +140,7 @@ export async function registrarCandidato(
 export async function registrarEmpresa(
   datos: RegistroEmpresaInput,
   ip?: string,
-): Promise<{ mensaje: string }> {
+): Promise<{ mensaje: string; user: UserResponse; token: string }> {
   const correo = datos.correo.toLowerCase().trim();
 
   // ¿Correo ya registrado?
@@ -179,7 +179,8 @@ export async function registrarEmpresa(
         correoContacto: datos.correoContacto?.toLowerCase().trim() ?? correo,
         telefonoContacto: datos.telefonoContacto ?? null,
         sitioWeb: datos.sitioWeb || null,
-        estado: EstadoEmpresa.PENDIENTE_APROBACION, // el servidor fija el estado
+        estado: EstadoEmpresa.ACTIVA, // Activación inmediata sin requerir aprobación previa del Superadmin
+        aprobadaEn: new Date(),
       },
     });
 
@@ -215,8 +216,8 @@ export async function registrarEmpresa(
   const appUrl = obtenerUrlFrontendPublica();
   await emailService.sendEmail({
     to: usuario.correo,
-    subject: 'Verifica tu correo — Plataforma de Reclutamiento',
-    text: `Hola ${usuario.nombre},\n\nTu empresa "${empresa.nombre}" ha sido registrada y está pendiente de aprobación.\n\nVerifica tu correo: ${appUrl}/verify-email?token=${rawToken}\n\nTe notificaremos cuando tu empresa sea aprobada.`,
+    subject: '¡Bienvenido! Tu empresa ya está activa — Plataforma de Reclutamiento',
+    text: `Hola ${usuario.nombre},\n\nTu empresa "${empresa.nombre}" ha sido registrada y activada inmediatamente. Ya puedes ingresar y publicar convocatorias.\n\nVerifica tu correo: ${appUrl}/verify-email?token=${rawToken}`,
     usuarioId: usuario.id,
     tipo: 'VERIFICACION_CORREO',
   }).catch(() => {});
@@ -228,11 +229,16 @@ export async function registrarEmpresa(
     accion: 'EMPRESA_REGISTRADA',
     entidad: 'Empresa',
     entidadId: empresa.id,
-    detalle: { correoCorporativo },
+    detalle: { correoCorporativo, activacionAutomatica: true },
     ip,
   });
 
-  return { mensaje: 'Tu empresa quedó registrada y pendiente de aprobación. Revisa tu correo.' };
+  const token = firmarToken(usuario.id);
+  return {
+    mensaje: 'Tu empresa fue registrada y activada con éxito. Ya puedes acceder a tu panel.',
+    user: mapearUsuario({ ...usuario, empresa }),
+    token,
+  };
 }
 
 // ─── 3. Login único ───────────────────────────────────────────────────────
@@ -307,6 +313,9 @@ export async function login(
     }
     if (estadoEmpresa === EstadoEmpresa.RECHAZADA) {
       throw new HttpError(403, 'El registro de tu empresa fue rechazado. Contacta al soporte.');
+    }
+    if (usuario.empresa.activaHasta && usuario.empresa.activaHasta < new Date()) {
+      throw new HttpError(403, 'El plazo de vigencia de tu empresa ha vencido. Contacta al administrador global.');
     }
     if (estadoEmpresa === EstadoEmpresa.SUSPENDIDA) {
       throw new HttpError(403, 'Tu empresa está suspendida. Contacta al soporte.');

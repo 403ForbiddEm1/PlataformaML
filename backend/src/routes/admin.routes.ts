@@ -58,6 +58,8 @@ adminRouter.get('/users', ...soloSuper, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+adminRouter.get('/users/:id/profile', ...soloSuper, adminController.getUserProfileReadOnly);
+
 adminRouter.get('/audit', ...soloSuper, adminController.getAuditLogs);
 
 // ─── Rutas anteriores (compatibilidad con el front actual) ────────────────

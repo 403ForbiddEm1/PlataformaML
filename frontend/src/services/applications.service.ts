@@ -106,8 +106,8 @@ function isLocalSessionToken(): boolean {
 
 export const applicationsService = {
   async getAll(): Promise<Application[]> {
-    const localApps = mockStore.getApplications().map(normalizeApplication);
     if (USE_MOCK) {
+      const localApps = mockStore.getApplications().map(normalizeApplication);
       await new Promise((r) => setTimeout(r, 200));
       return filterOutDeletedCandidates(applyStatusOverrides(localApps));
     }
@@ -119,12 +119,10 @@ export const applicationsService = {
         ? (response as any).data.data
         : [];
       const remoteApps = list.map(normalizeApplication);
-      const map = new Map<string, Application>();
-      localApps.forEach((a: Application) => map.set(a.id, a));
-      remoteApps.forEach((a: Application) => map.set(a.id, a));
-      return filterOutDeletedCandidates(applyStatusOverrides(Array.from(map.values())));
+      mockStore.saveApplications(remoteApps);
+      return filterOutDeletedCandidates(remoteApps);
     } catch {
-      return filterOutDeletedCandidates(applyStatusOverrides(localApps));
+      return [];
     }
   },
 
@@ -134,12 +132,12 @@ export const applicationsService = {
     if (deletedEmails.has(cleanEmail)) {
       return [];
     }
-    const localApps = mockStore
-      .getApplications()
-      .filter((app) => (app.candidateEmail || '').trim().toLowerCase() === cleanEmail)
-      .map(normalizeApplication);
 
     if (USE_MOCK) {
+      const localApps = mockStore
+        .getApplications()
+        .filter((app) => (app.candidateEmail || '').trim().toLowerCase() === cleanEmail)
+        .map(normalizeApplication);
       await new Promise((r) => setTimeout(r, 200));
       return filterOutDeletedCandidates(localApps);
     }
@@ -151,12 +149,10 @@ export const applicationsService = {
         ? (response as any).data.data
         : [];
       const remoteApps = list.map(normalizeApplication);
-      const map = new Map<string, Application>();
-      localApps.forEach((a: Application) => map.set(a.id, a));
-      remoteApps.forEach((a: Application) => map.set(a.id, a));
-      return filterOutDeletedCandidates(Array.from(map.values()));
+      mockStore.saveApplications(remoteApps);
+      return filterOutDeletedCandidates(remoteApps);
     } catch {
-      return filterOutDeletedCandidates(localApps);
+      return [];
     }
   },
 
@@ -341,30 +337,21 @@ export const applicationsService = {
     }
 
     if (!USE_MOCK) {
-      try {
-        const formData = new FormData();
-        formData.append('vacancyId', payload.vacancyId);
-        formData.append('email', payload.email);
-        formData.append('firstName', payload.firstName);
-        formData.append('lastName', payload.lastName);
-        formData.append('phone', payload.phone);
-        if (payload.idCardFile) formData.append('idCard', payload.idCardFile);
-        if (payload.cvFile) formData.append('cv', payload.cvFile);
+      const formData = new FormData();
+      formData.append('vacancyId', payload.vacancyId);
+      formData.append('email', payload.email);
+      formData.append('firstName', payload.firstName);
+      formData.append('lastName', payload.lastName);
+      formData.append('phone', payload.phone);
+      if (payload.idCardFile) formData.append('idCard', payload.idCardFile);
+      if (payload.cvFile) formData.append('cv', payload.cvFile);
 
-        const response = await api.upload<any>('/applications', formData);
-        const app = (response.data as any)?.data || response.data;
-        if (app && app.id) {
-          const norm = normalizeApplication(app);
-          const apps = mockStore.getApplications();
-          if (!apps.some((a) => a.id === norm.id)) {
-            apps.unshift(norm);
-            mockStore.saveApplications(apps);
-          }
-          return norm;
-        }
-      } catch (err) {
-        console.warn('Backend upload application failed, fallback to local storage:', err);
+      const response = await api.upload<any>('/applications', formData);
+      const app = (response.data as any)?.data || response.data;
+      if (app && app.id) {
+        return normalizeApplication(app);
       }
+      throw new Error('No se pudo registrar la postulación en el servidor.');
     }
 
     // Local resilient submission fallback

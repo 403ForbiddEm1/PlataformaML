@@ -14,8 +14,10 @@ const actualizarEmpresaSchema = z
     sector: z.string().max(100).optional(),
     correoContacto: z.string().email().max(254).optional(),
     telefonoContacto: z.string().max(20).optional(),
-    sitioWeb: z.string().url().max(255).optional(),
+    sitioWeb: z.string().url().max(255).optional().or(z.literal('')),
     direccion: z.string().max(255).optional(),
+    descripcion: z.string().max(2000).optional(),
+    visibilidadPerfil: z.enum(['PUBLICO', 'SOLO_REGISTRADOS', 'NADIE']).optional(),
     latitud: z.number().min(-90).max(90).optional(),
     longitud: z.number().min(-180).max(180).optional(),
   })
@@ -47,6 +49,89 @@ function actorDe(req: Request): companyService.Actor {
 }
 
 export const companyController = {
+  async getPublicProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid().parse(req.params.id);
+      const empresa = await prisma.empresa.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          nombre: true,
+          razonSocial: true,
+          identificacionFiscal: true,
+          sector: true,
+          sitioWeb: true,
+          dominio: true,
+          descripcion: true,
+          visibilidadPerfil: true,
+          correoContacto: true,
+          telefonoContacto: true,
+          direccion: true,
+          estado: true,
+          activaHasta: true,
+          creadoEn: true,
+          vacantes: {
+            select: {
+              id: true,
+              titulo: true,
+              departamento: true,
+              ubicacion: true,
+              modalidad: true,
+              tipoContrato: true,
+              cantidadVacantes: true,
+              estado: true,
+              creadoEn: true,
+            },
+            orderBy: { creadoEn: 'desc' },
+          },
+          _count: {
+            select: { vacantes: true, postulaciones: true },
+          },
+        },
+      });
+      if (!empresa) throw new HttpError(404, 'Empresa no encontrada');
+
+      const viewer = req.user;
+      const isSuperAdmin = viewer?.rol === 'SUPER_ADMIN';
+      const isOwnCompany = Boolean(viewer?.empresaId && viewer.empresaId === empresa.id);
+      const visibilidad = empresa.visibilidadPerfil || 'PUBLICO';
+
+      if (!isSuperAdmin && !isOwnCompany) {
+        if (visibilidad === 'NADIE') {
+          res.status(403).json({
+            success: false,
+            error: 'Esta empresa ha configurado su perfil como privado.',
+            visibilityBlocked: 'NADIE',
+          });
+          return;
+        }
+        if (visibilidad === 'SOLO_REGISTRADOS' && !viewer) {
+          res.status(403).json({
+            success: false,
+            error: 'Debes iniciar sesión con una cuenta registrada para ver el perfil de esta empresa.',
+            visibilityBlocked: 'SOLO_REGISTRADOS',
+          });
+          return;
+        }
+      }
+
+      const vacantesActivas = empresa.vacantes.filter((v) => v.estado === 'ABIERTA');
+      const historialVacantes = empresa.vacantes.filter((v) => v.estado !== 'ABIERTA');
+
+      res.json({
+        success: true,
+        data: {
+          ...empresa,
+          vacantes: vacantesActivas,
+          vacantesActivas,
+          historialVacantes,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async me(req: Request, res: Response, next: NextFunction) {
     try {
       res.json({ success: true, data: await companyService.obtenerEmpresa(actorDe(req)) });

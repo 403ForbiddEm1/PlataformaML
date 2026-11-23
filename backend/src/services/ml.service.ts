@@ -145,10 +145,6 @@ export const mlService = {
     );
     const missingSkills = requiredSkills.filter((rs) => !matchingSkills.includes(rs));
 
-    const skillsMatch = requiredSkills.length > 0 ? Math.round((matchingSkills.length / requiredSkills.length) * 100) : 85;
-    const experienceMatch = requiredYears > 0 ? Math.min(100, Math.round((candidateYears / requiredYears) * 100)) : 100;
-    const educationMatch = 90;
-
     let apiScore: number | null = null;
     let apiRecommended: boolean | null = null;
     let apiSimilarity: number | undefined = undefined;
@@ -171,7 +167,7 @@ export const mlService = {
 
       if (response.ok) {
         rawResponse = await response.json();
-        // PredictResponse de ml-service/app/schemas/schemas.py:
+        // PredictResponse real de ml-service/app/schemas/schemas.py:
         // { score: float (0-100), recommended: bool, similarity: float (0-100), experience_ok: bool|null, matched_terms: list[str] }
         if (typeof rawResponse.score === 'number') {
           apiScore = rawResponse.score;
@@ -189,53 +185,61 @@ export const mlService = {
           apiMatchedTerms = rawResponse.matched_terms;
         }
       } else {
-        console.warn(`[ML_SERVICE_WARN] Código de respuesta ${response.status} de ML. Usando evaluación local.`);
+        console.warn(`[ML_SERVICE_WARN] Código de respuesta ${response.status} de ML. Sin puntaje inventado.`);
       }
     } catch (err: any) {
-      console.warn('[ML_SERVICE_UNAVAILABLE] El servicio de ML no respondió, usando evaluación heurística:', err.message);
+      console.warn('[ML_SERVICE_UNAVAILABLE] El servicio de ML no respondió. Sin puntaje inventado:', err.message);
     }
 
-    // Si el microservicio respondió, usamos su puntaje y recomendación real
-    const finalScore = apiScore !== null ? Math.round(apiScore) : Math.round(skillsMatch * 0.45 + experienceMatch * 0.35 + educationMatch * 0.2);
-    const normalizedScore = Math.max(0, Math.min(100, finalScore));
-    const puntajeAfinidad = Number(((apiScore !== null ? apiScore : normalizedScore) / 100).toFixed(4));
-    const esApto = apiRecommended !== null ? apiRecommended : puntajeAfinidad >= 0.5;
+    // 100% REAL: si el modelo ML no respondió, NO inventamos puntajes ni textos.
+    const mlResponded = apiScore !== null;
+    const normalizedScore = mlResponded ? Math.max(0, Math.min(100, Math.round(apiScore!))) : 0;
+    const puntajeAfinidad = mlResponded ? Number((apiScore! / 100).toFixed(4)) : 0;
+    const esApto = mlResponded ? Boolean(apiRecommended) : false;
 
-    // Combinar habilidades coincidentes con matched_terms de TF-IDF del modelo Python
-    const combinedMatchingSkills = Array.from(new Set([...matchingSkills, ...apiMatchedTerms]));
+    const combinedMatchingSkills = Array.from(new Set([...apiMatchedTerms, ...matchingSkills]));
+    const realSimilarity = apiSimilarity !== undefined ? Math.round(apiSimilarity) : 0;
+    const realExperienceMatch =
+      apiExperienceOk === true
+        ? 100
+        : apiExperienceOk === false
+        ? requiredYears > 0
+          ? Math.min(99, Math.round((candidateYears / requiredYears) * 100))
+          : 0
+        : requiredYears > 0
+        ? Math.min(100, Math.round((candidateYears / requiredYears) * 100))
+        : 0;
 
     const keyFactors: string[] = [];
-    if (apiExperienceOk === true || experienceMatch >= 80) {
-      keyFactors.push(`Cumple con los ${requiredYears} años de experiencia requeridos.`);
-    } else if (apiExperienceOk === false || experienceMatch < 60) {
-      keyFactors.push(`Experiencia laboral inferior a los ${requiredYears} años solicitados.`);
+    if (mlResponded) {
+      keyFactors.push(`Probabilidad de aptitud (modelo ML): ${normalizedScore}% (${esApto ? 'Apto' : 'No apto'}).`);
+      if (apiSimilarity !== undefined) {
+        keyFactors.push(`Similitud coseno TF-IDF real: ${apiSimilarity.toFixed(1)}%.`);
+      }
+      if (apiExperienceOk === true) {
+        keyFactors.push(`Experiencia verificada por el modelo: cumple (${requiredYears} años requeridos).`);
+      } else if (apiExperienceOk === false) {
+        keyFactors.push(`Experiencia verificada por el modelo: por debajo de ${requiredYears} años requeridos.`);
+      }
+      if (apiMatchedTerms.length > 0) {
+        keyFactors.push(`Términos TF-IDF coincidentes: ${apiMatchedTerms.join(', ')}.`);
+      }
+      if (missingSkills.length > 0) {
+        keyFactors.push(`Competencias de la vacante ausentes en el CV: ${missingSkills.slice(0, 5).join(', ')}.`);
+      }
+    } else {
+      keyFactors.push('El microservicio Python de Machine Learning no respondió en esta solicitud.');
     }
 
-    if (apiMatchedTerms.length > 0) {
-      keyFactors.push(`Términos clave detectados por el modelo TF-IDF: ${apiMatchedTerms.join(', ')}.`);
-    } else if (skillsMatch >= 75 && matchingSkills.length > 0) {
-      keyFactors.push(`Domina la mayoría de las habilidades requeridas (${matchingSkills.join(', ')}).`);
-    }
-
-    if (missingSkills.length > 0) {
-      keyFactors.push(`Habilidades faltantes clave: ${missingSkills.slice(0, 3).join(', ')}.`);
-    }
-
-    if (apiSimilarity !== undefined) {
-      keyFactors.push(`Similitud textual TF-IDF con la vacante: ${apiSimilarity.toFixed(1)}%.`);
-    }
-
-    keyFactors.push('Evaluación libre de sesgos demográficos garantizada (RNF03).');
-
-    const explanation = esApto
-      ? `El candidato posee una afinidad destacada (${normalizedScore}%) con el perfil buscado, alineándose con las competencias técnicas requeridas y la experiencia solicitada.`
-      : `El perfil presenta afinidad moderada o baja (${normalizedScore}%), requiriendo fortalecimiento en habilidades técnicas específicas antes de avanzar.`;
+    const explanation = mlResponded
+      ? `Resultado ML: ${normalizedScore}% de afinidad | Similitud TF-IDF: ${realSimilarity}% | Términos coincidentes: ${apiMatchedTerms.length > 0 ? apiMatchedTerms.join(', ') : 'ninguno detectado'}.`
+      : 'Pendiente de evaluación por el microservicio de Machine Learning (sin puntaje simulado).';
 
     const breakdown: MLFactorBreakdown = {
       affinityScore: normalizedScore,
-      experienceMatch: apiExperienceOk === true ? 100 : experienceMatch,
-      educationMatch,
-      skillsMatch: apiSimilarity !== undefined ? Math.max(skillsMatch, Math.round(apiSimilarity)) : skillsMatch,
+      experienceMatch: realExperienceMatch,
+      educationMatch: realSimilarity,
+      skillsMatch: realSimilarity,
       matchingSkills: combinedMatchingSkills,
       missingSkills,
       keyFactors,
@@ -251,7 +255,7 @@ export const mlService = {
       experienceOk: apiExperienceOk,
       matchedTerms: apiMatchedTerms,
       breakdown,
-      modelVersion: 'regresion_logistica_v2',
+      modelVersion: mlResponded ? 'ml_service_active' : 'ml_service_offline',
       rawResponse,
     };
   },

@@ -438,10 +438,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         phone: compAdminPhone,
       });
       showToast(
-        'Empresa Registrada',
-        `La solicitud de afiliación de "${result.empresa.nombre}" fue enviada. Tu cuenta se encuentra en revisión y el Administrador Global la habilitará en breve.`,
+        '¡Empresa Registrada y Activa!',
+        `Tu empresa "${result.empresa.nombre}" ya está activa. Puedes iniciar sesión inmediatamente con ${compAdminEmail}.`,
         'success'
       );
+      setEmail(compAdminEmail);
       setAuthMode('login');
       setCompName('');
       setCompRif('');

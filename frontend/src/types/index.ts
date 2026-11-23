@@ -167,9 +167,15 @@ export interface MLModelMetrics {
   precision: number;
   recall: number;
   f1Score: number;
+  rocAuc?: number;
   datasetSize: number;
-  lastTrainedAt: string;
+  totalPredictions?: number;
+  totalDatasets?: number;
+  mlServiceOnline?: boolean;
+  isRealModel?: boolean;
+  lastTrainedAt: string | null;
   isFairnessCompliant: boolean;
+  rawMetrics?: Record<string, any> | null;
   trainingHistory: {
     epoch: number;
     accuracy: number;

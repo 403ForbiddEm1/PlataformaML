@@ -105,48 +105,50 @@ export const mlController = {
     }
   },
 
-  // GET /api/ml/metrics -> conecta con GET /metrics de ml-service
+  // GET /api/ml/metrics -> conecta directamente con GET /metrics de ml-service + Neon (sin datos inventados)
   async getMetrics(req: Request, res: Response, next: NextFunction) {
     try {
-      const modeloDb = await prisma.modeloML.findFirst({
-        where: { activo: true },
-        orderBy: { creadoEn: 'desc' },
-      });
+      const [modeloDb, totalPredicciones, totalDatasets, remoteMetrics] = await Promise.all([
+        prisma.modeloML.findFirst({
+          where: { activo: true },
+          orderBy: { creadoEn: 'desc' },
+        }),
+        prisma.prediccionML.count(),
+        prisma.conjuntoDatos.count(),
+        mlService.getMetrics(),
+      ]);
 
-      // Consulta métricas reales de ml-service (GET /metrics o data/processed/metrics.json)
-      const remoteMetrics = await mlService.getMetrics();
       const dbMetrics = (modeloDb?.metricas as any) || {};
-
-      // En ml-service/data/processed/metrics.json las métricas están en remoteMetrics.test.{accuracy,precision,recall,f1}
       const testBlock = remoteMetrics?.test || remoteMetrics || {};
 
-      const accuracy = normalizarPorcentaje(testBlock.accuracy, dbMetrics.accuracy ?? 88.5);
-      const precision = normalizarPorcentaje(testBlock.precision, dbMetrics.precision ?? 67.9);
-      const recall = normalizarPorcentaje(testBlock.recall, dbMetrics.recall ?? 90.5);
-      const f1Score = normalizarPorcentaje(testBlock.f1 ?? testBlock.f1Score, dbMetrics.f1Score ?? 77.6);
+      // Solo valores reales provenientes de ml-service o del último ModeloML entrenado en Neon (0 si no existe)
+      const accuracy = normalizarPorcentaje(testBlock.accuracy, typeof dbMetrics.accuracy === 'number' ? dbMetrics.accuracy : 0);
+      const precision = normalizarPorcentaje(testBlock.precision, typeof dbMetrics.precision === 'number' ? dbMetrics.precision : 0);
+      const recall = normalizarPorcentaje(testBlock.recall, typeof dbMetrics.recall === 'number' ? dbMetrics.recall : 0);
+      const f1Score = normalizarPorcentaje(testBlock.f1 ?? testBlock.f1Score, typeof dbMetrics.f1Score === 'number' ? dbMetrics.f1Score : 0);
+      const rocAuc = normalizarPorcentaje(testBlock.roc_auc ?? remoteMetrics?.roc_auc, typeof dbMetrics.rocAuc === 'number' ? dbMetrics.rocAuc : 0);
       const datasetSize =
         remoteMetrics?.n_pairs ??
         remoteMetrics?.dataset_size ??
         modeloDb?.totalEntrenamiento ??
-        360;
+        0;
 
       const metricsDto: MLModelMetricsResponse & Record<string, any> = {
-        name: remoteMetrics?.model || modeloDb?.nombre || 'TF-IDF + Regresión Logística',
-        version: modeloDb?.version || 'v2.0.0',
-        algorithm: remoteMetrics?.selected_model || modeloDb?.algoritmo || 'regresion_logistica',
+        name: remoteMetrics?.model || modeloDb?.nombre || 'Modelo ML (Sin entrenar)',
+        version: remoteMetrics?.version || modeloDb?.version || '—',
+        algorithm: remoteMetrics?.selected_model || modeloDb?.algoritmo || '—',
         accuracy,
         precision,
         recall,
         f1Score,
+        rocAuc,
         datasetSize,
-        lastTrainedAt: modeloDb?.entrenadoEn?.toISOString() || new Date().toISOString(),
+        totalPredictions: totalPredicciones,
+        totalDatasets,
+        mlServiceOnline: Boolean(remoteMetrics),
+        lastTrainedAt: remoteMetrics?.trained_at || modeloDb?.entrenadoEn?.toISOString() || '',
         isFairnessCompliant: dbMetrics.isFairnessCompliant ?? true,
-        trainingHistory: dbMetrics.trainingHistory || [
-          { epoch: 1, accuracy: 72, loss: 0.58 },
-          { epoch: 2, accuracy: 81, loss: 0.42 },
-          { epoch: 3, accuracy, loss: 0.28 },
-        ],
-        // Datos completos del microservicio ml-service (comparison, confusion_matrix, roc_auc, baseline_cosine)
+        trainingHistory: Array.isArray(dbMetrics.trainingHistory) ? dbMetrics.trainingHistory : [],
         rawMetrics: remoteMetrics || null,
       };
 

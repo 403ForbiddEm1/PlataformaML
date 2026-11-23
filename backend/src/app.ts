@@ -17,6 +17,7 @@ import { companyRouter } from './routes/company.routes';
 import { chatRouter } from './routes/chat.routes';
 import { webhooksRouter } from './routes/webhooks.routes';
 import { supportRouter } from './routes/support.routes';
+import { catalogRouter } from './routes/catalog.routes';
 import { manejarErrores, noEncontrado } from './middlewares/error.middleware';
 
 export const app = express();
@@ -82,6 +83,7 @@ app.use('/api/conversations', chatRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/support', supportRouter);
+app.use('/api/catalog', catalogRouter);
 
 // Manejo de errores y 404
 app.use(noEncontrado);

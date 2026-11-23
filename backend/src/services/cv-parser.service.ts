@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import mammoth from 'mammoth';
+import { mlService } from './ml.service';
 // pdf-parse/lib evita el modo "debug" del index.js que intenta abrir un PDF de prueba
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse: (data: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse.js');
@@ -35,27 +36,39 @@ export interface CvExtraido {
 
 export async function extraerTextoDeArchivo(rutaFisica: string): Promise<string> {
   const ext = path.extname(rutaFisica).toLowerCase();
+  let textoLocal = '';
   try {
     if (ext === '.pdf') {
       const buffer = await fs.promises.readFile(rutaFisica);
       const res = await pdfParse(buffer);
-      return normalizarTexto(res.text || '');
-    }
-    if (ext === '.docx') {
+      textoLocal = normalizarTexto(res.text || '');
+    } else if (ext === '.docx') {
       const res = await mammoth.extractRawText({ path: rutaFisica });
-      return normalizarTexto(res.value || '');
-    }
-    if (ext === '.doc') {
+      textoLocal = normalizarTexto(res.value || '');
+    } else if (ext === '.doc') {
       // .doc antiguo (binario OLE2): se rescatan las cadenas de texto legibles
       const buffer = await fs.promises.readFile(rutaFisica);
       const crudo = buffer.toString('latin1');
       const trozos = crudo.match(/[A-Za-zÁÉÍÓÚáéíóúÑñÜü0-9@.,:;()\-\/%&+ ]{6,}/g) || [];
-      return normalizarTexto(trozos.join('\n'));
+      textoLocal = normalizarTexto(trozos.join('\n'));
     }
   } catch (err: any) {
-    console.warn('[CV_PARSER] No se pudo leer el archivo:', err?.message);
+    console.warn('[CV_PARSER] Lectura local falló, intentando extractor Python ML:', err?.message);
   }
-  return '';
+
+  // Respaldo real con el extractor del microservicio Python (pypdf / python-docx) si el texto local salió vacío o muy corto
+  if (textoLocal.length < 30 && (ext === '.pdf' || ext === '.docx')) {
+    try {
+      const mlExtract = await mlService.extractText(rutaFisica, path.basename(rutaFisica));
+      if (mlExtract?.text && mlExtract.text.trim().length > textoLocal.length) {
+        return normalizarTexto(mlExtract.text);
+      }
+    } catch (err: any) {
+      console.warn('[CV_PARSER] Extractor Python ML no disponible:', err?.message);
+    }
+  }
+
+  return textoLocal;
 }
 
 function normalizarTexto(texto: string): string {

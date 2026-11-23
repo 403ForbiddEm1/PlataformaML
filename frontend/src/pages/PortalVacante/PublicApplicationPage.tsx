@@ -25,6 +25,7 @@ import {
 import { applicationsService } from '@/services/applications.service';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { CompanyPublicProfileModal } from '@/components/company/CompanyPublicProfileModal';
 import confetti from 'canvas-confetti';
 
 interface PublicApplicationPageProps {
@@ -45,6 +46,7 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
   const [idCardFile, setIdCardFile] = useState<File | null>(null);
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompanyProfileOpen, setIsCompanyProfileOpen] = useState(false);
 
   useEffect(() => {
     if (user?.phone) {
@@ -163,10 +165,23 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
             <div className="w-full px-4 sm:px-6 lg:px-10 py-3 sm:py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 lg:gap-4">
               <div className="space-y-0.5 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#f6eee2] dark:bg-[#1d1612] text-[#543b23] dark:text-[#ebdcc8] font-bold text-[11px] border border-[#d9c7ab] dark:border-[#463629]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cid = vacancy.empresaId || vacancy.companyId;
+                      if (cid) setIsCompanyProfileOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#f6eee2] hover:bg-[#ecdcc5] dark:bg-[#1d1612] dark:hover:bg-[#2a2018] text-[#543b23] dark:text-[#ebdcc8] font-bold text-[11px] border border-[#d9c7ab] dark:border-[#463629] transition-colors cursor-pointer"
+                    title="Ver perfil público de la empresa"
+                  >
                     <Building2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                    {vacancy.empresaNombre || 'PlataformaML Corporativo'}
-                  </span>
+                    <span>{vacancy.empresaNombre || 'PlataformaML Corporativo'}</span>
+                    {(vacancy.empresaId || vacancy.companyId) && (
+                      <span className="text-[10px] underline decoration-dotted text-emerald-700 dark:text-emerald-400 ml-0.5">
+                        Ver perfil
+                      </span>
+                    )}
+                  </button>
                   <span className="text-[11px] text-[#70553b] dark:text-[#baa085] font-semibold">
                     · {vacancy.department}
                   </span>
@@ -431,6 +446,12 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
       </main>
 
       <Footer />
+
+      <CompanyPublicProfileModal
+        companyId={isCompanyProfileOpen ? (vacancy.empresaId || vacancy.companyId || null) : null}
+        isOpen={isCompanyProfileOpen}
+        onClose={() => setIsCompanyProfileOpen(false)}
+      />
     </div>
   );
 };

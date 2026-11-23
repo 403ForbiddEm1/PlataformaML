@@ -2,9 +2,12 @@
 import { Router } from 'express';
 import { Rol } from '@prisma/client';
 import { companyController } from '../controllers/company.controller';
-import { autenticar, exigirRol } from '../middlewares/auth.middleware';
+import { autenticar, autenticarOpcional, exigirRol } from '../middlewares/auth.middleware';
 
 export const companyRouter = Router();
+
+// Perfil público de solo lectura de cualquier empresa (respeta visibilidadPerfil: PUBLICO | SOLO_REGISTRADOS | NADIE)
+companyRouter.get('/public/:id', autenticarOpcional, companyController.getPublicProfile);
 
 companyRouter.use(autenticar);
 
@@ -15,6 +18,8 @@ companyRouter.get('/', personal, companyController.me);
 companyRouter.get('/me', personal, companyController.me);
 companyRouter.put('/', soloAdmin, companyController.update);
 companyRouter.put('/me', soloAdmin, companyController.update);
+companyRouter.patch('/', soloAdmin, companyController.update);
+companyRouter.patch('/me', soloAdmin, companyController.update);
 companyRouter.get('/members', soloAdmin, companyController.members);
 companyRouter.post('/invitations', soloAdmin, companyController.invite);
 companyRouter.post('/members/invite', soloAdmin, companyController.invite);

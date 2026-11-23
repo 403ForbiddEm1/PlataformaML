@@ -7,6 +7,7 @@ import { vacanciesService } from '@/services/vacancies.service';
 import { applicationsService } from '@/services/applications.service';
 import { empresaService } from '@/services/empresa.service';
 import { employeesService } from '@/services/employees.service';
+import { api } from '@/services/api';
 import { Button } from '@/components/ui/Button';
 import { AppShell } from '@/components/layout/AppShell';
 import { type SidebarSection } from '@/components/layout/Sidebar';
@@ -96,6 +97,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
   const [editDominio, setEditDominio] = useState('');
   const [editTelefono, setEditTelefono] = useState('');
   const [editDescripcion, setEditDescripcion] = useState('');
+  const [editVisibilidad, setEditVisibilidad] = useState<'PUBLICO' | 'SOLO_REGISTRADOS' | 'NADIE'>('PUBLICO');
   const [companyCoverUrl, setCompanyCoverUrl] = useState<string | null>(() => {
     try {
       return localStorage.getItem(`nexo_company_cover_${currentEmpresaId || currentEmpresaNombre}`) || null;
@@ -152,13 +154,21 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
   const loadCompanyData = async () => {
     setIsLoading(true);
     try {
-      const [allVacancies, allApps, allCompanies, myMembers, allEmps] = await Promise.all([
+      const [allVacancies, allApps, allCompanies, myMembers, allEmps, myCompanyMe] = await Promise.all([
         vacanciesService.getAll().catch(() => []),
         applicationsService.getAll().catch(() => []),
         empresaService.getAll().catch(() => []),
         employeesService.getCompanyMembers(currentEmpresaId).catch(() => []),
         employeesService.getAll(currentEmpresaId).catch(() => []),
+        api.get<any>('/company/me').then((r) => r.data).catch(() => null),
       ]);
+
+      if (myCompanyMe?.visibilidadPerfil) {
+        setEditVisibilidad(myCompanyMe.visibilidadPerfil);
+      }
+      if (myCompanyMe?.descripcion) {
+        setEditDescripcion(myCompanyMe.descripcion);
+      }
 
       // Filter exclusively for this company
       const thisCompany = allCompanies.find(
@@ -300,19 +310,38 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
     }
   };
 
-  const handleSaveCompanyProfile = (e: React.FormEvent) => {
+  const handleSaveCompanyProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (empresaData) {
-      const updated = {
-        ...empresaData,
-        nombre: editNombre,
-        rif: editRif,
-        dominio: editDominio,
-        telefono: editTelefono,
-        descripcion: editDescripcion,
-      };
-      setEmpresaData(updated);
-      showToast('Perfil Actualizado', 'La información corporativa de tu empresa fue guardada con éxito.', 'success');
+    try {
+      await api.patch('/company/me', {
+        razonSocial: editNombre.trim() || undefined,
+        telefonoContacto: editTelefono.trim() || undefined,
+        sitioWeb: editDominio.trim()
+          ? editDominio.trim().startsWith('http')
+            ? editDominio.trim()
+            : `https://${editDominio.trim()}`
+          : '',
+        descripcion: editDescripcion.trim(),
+        visibilidadPerfil: editVisibilidad,
+      });
+
+      if (empresaData) {
+        setEmpresaData({
+          ...empresaData,
+          nombre: editNombre,
+          rif: editRif,
+          dominio: editDominio,
+          telefono: editTelefono,
+          descripcion: editDescripcion,
+        });
+      }
+      showToast(
+        'Perfil Actualizado en BD',
+        'La información y privacidad del perfil de tu empresa fueron guardadas en Neon.',
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Error al guardar', err?.message || 'No se pudieron guardar los cambios en el servidor.', 'error');
     }
   };
 
@@ -329,7 +358,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
     totalCompanyApps > 0
       ? Math.round(
           companyApplications.reduce(
-            (acc, a) => acc + (typeof a.mlScore === 'number' ? a.mlScore : 85),
+            (acc, a) => acc + (typeof a.mlScore === 'number' ? a.mlScore : 0),
             0
           ) / totalCompanyApps
         )
@@ -1121,6 +1150,24 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                     className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 leading-relaxed font-normal"
                     placeholder="Describe los valores, misión y sector tecnológico de la empresa..."
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                    Visibilidad del Perfil Público e Historial de Vacantes
+                  </label>
+                  <select
+                    value={editVisibilidad}
+                    onChange={(e) => setEditVisibilidad(e.target.value as 'PUBLICO' | 'SOLO_REGISTRADOS' | 'NADIE')}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white/70 dark:bg-slate-900 border border-slate-300 dark:border-white/15 text-slate-900 dark:text-slate-100 cursor-pointer"
+                  >
+                    <option value="PUBLICO">Público — Visible para visitantes sin cuenta y usuarios registrados</option>
+                    <option value="SOLO_REGISTRADOS">Solo registrados — Solo usuarios con cuenta pueden ver el perfil</option>
+                    <option value="NADIE">Privado (Nadie) — Oculto para visitantes y candidatos</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Controla quién puede consultar los datos de tu empresa, tus vacantes activas y tu historial de convocatorias.
+                  </p>
                 </div>
 
                 <div className="pt-2">

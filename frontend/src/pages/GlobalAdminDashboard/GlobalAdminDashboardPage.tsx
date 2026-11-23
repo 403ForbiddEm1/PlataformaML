@@ -16,6 +16,9 @@ import { supportService } from '@/services/support.service';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
+import { api } from '@/services/api';
+import { CompanyPublicProfileModal } from '@/components/company/CompanyPublicProfileModal';
+import { UserProfileReadOnlyModal } from '@/components/admin/UserProfileReadOnlyModal';
 import {
   Brain,
   Cpu,
@@ -46,6 +49,7 @@ import {
   AlertTriangle,
   LogOut,
   LifeBuoy,
+  Eye,
 } from 'lucide-react';
 
 export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
@@ -119,6 +123,12 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeleteUserModalOpen, setIsDeleteUserModalOpen] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Modales de solo lectura para ver perfiles de empresas y usuarios (Superadmin)
+  const [viewingCompanyId, setViewingCompanyId] = useState<string | null>(null);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  // Plazos de vigencia por empresa (Superadmin)
+  const [deadlineDrafts, setDeadlineDrafts] = useState<Record<string, string>>({});
 
   const vacancyById = useMemo(() => {
     const map = new Map<string, Vacancy>();
@@ -340,38 +350,29 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
 
   const handleRetrainModel = async () => {
     setIsRetraining(true);
-    setTrainProgress(0);
-    setCurrentEpoch(0);
+    setTrainProgress(25);
+    setCurrentEpoch(1);
 
-    const interval = setInterval(() => {
-      setTrainProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsRetraining(false);
-          setMlInfo((old) =>
-            old
-              ? {
-                  ...old,
-                  accuracy: 94.2,
-                  f1Score: 93.8,
-                  precision: 92.5,
-                  recall: 91.8,
-                  lastTrainedAt: new Date().toISOString(),
-                }
-              : null
-          );
-          showToast(
-            'Re-entrenamiento Exitoso',
-            `Modelo re-entrenado exitosamente con ${epochs} épocas. Accuracy mejorada a 94.2%.`,
-            'success'
-          );
-          return 100;
-        }
-        const next = prev + 20;
-        setCurrentEpoch(Math.min(epochs, Math.floor(next / (100 / epochs)) + 1));
-        return next;
-      });
-    }, 600);
+    try {
+      await mlService.retrainModel();
+      setTrainProgress(80);
+      const freshMetrics = await mlService.getModelMetrics();
+      setMlInfo(freshMetrics);
+      setTrainProgress(100);
+      showToast(
+        'Re-entrenamiento Real Completado',
+        `Modelo entrenado en Python Scikit-Learn (${freshMetrics.algorithm}). Accuracy real: ${freshMetrics.accuracy}% | F1: ${freshMetrics.f1Score}%.`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast(
+        'Error al re-entrenar',
+        err?.message || 'El microservicio Python de ML no respondió al re-entrenamiento.',
+        'error'
+      );
+    } finally {
+      setIsRetraining(false);
+    }
   };
 
   const handleUploadDataset = async (e: React.FormEvent) => {
@@ -472,6 +473,23 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
     }
   };
 
+  const handleSetCompanyDeadline = async (id: string, name: string, dateStr: string | null) => {
+    try {
+      const iso = dateStr ? new Date(`${dateStr}T23:59:59.000Z`).toISOString() : null;
+      await api.patch(`/admin/companies/${id}/status`, { activaHasta: iso });
+      showToast(
+        iso ? 'Plazo de vigencia guardado' : 'Plazo eliminado',
+        iso
+          ? `La empresa "${name}" estará activa hasta el ${dateStr}.`
+          : `La empresa "${name}" ya no tiene fecha de desactivación automática.`,
+        'success'
+      );
+      await loadData();
+    } catch (err: any) {
+      showToast('Error', err?.message || 'No se pudo guardar el plazo de vigencia.', 'error');
+    }
+  };
+
   const rolePriority: Record<string, number> = {
     superadmin: 0,
     admin: 1,
@@ -558,69 +576,105 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
           {/* TAB 1: MLOPS & MOTOR DE IA GLOBAL */}
           {activeTab === 'mlops' && (
             <div className="animate-page-enter-left w-full flex-1 flex flex-col divide-y divide-slate-200/50 dark:divide-white/10">
-            {/* Impact Metrics Banner */}
+            {/* Real ML Telemetry Banner (100% from Python ML Service + Neon DB) */}
             <section className="w-full p-6 sm:p-10 bg-white/15 dark:bg-transparent backdrop-blur-[2px] text-slate-900 dark:text-white space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/60 dark:border-white/10">
                 <div>
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold mb-2 border border-emerald-500/30">
-                    <Activity className="w-3.5 h-3.5" /> Métricas Globales de Machine Learning
+                    <Activity className="w-3.5 h-3.5" /> Métricas Reales del Motor de Machine Learning
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                    Impacto del Modelo de IA en Toda la Plataforma
+                    Telemetría Real de Modelos Entrenados
                   </h2>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-2xl">
-                    Evaluación empírica global entre el filtrado manual tradicional y la inferencia de afinidad vectorial de PlataformaML.
+                    Todos los indicadores provienen directamente de las evaluaciones reales del microservicio Python (Scikit-Learn) y registros de predicción en Neon PostgreSQL.
                   </p>
                 </div>
 
                 <TiltGlassCard
                   maxTiltDeg={3.5}
-                  className="px-5 py-3 rounded-2xl flex items-center gap-3 shrink-0 !border-emerald-500/30 !bg-emerald-500/10 dark:!bg-emerald-500/[0.08]"
+                  className={`px-5 py-3 rounded-2xl flex items-center gap-3 shrink-0 ${
+                    mlInfo?.mlServiceOnline
+                      ? '!border-emerald-500/30 !bg-emerald-500/10 dark:!bg-emerald-500/[0.08]'
+                      : '!border-amber-500/30 !bg-amber-500/10 dark:!bg-amber-500/[0.08]'
+                  }`}
                 >
-                  <Zap className="w-7 h-7 text-emerald-600 dark:text-emerald-400 relative z-10" />
+                  <Cpu
+                    className={`w-7 h-7 relative z-10 ${
+                      mlInfo?.mlServiceOnline
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}
+                  />
                   <div className="relative z-10">
-                    <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300 block">Eficiencia Global</span>
-                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                      -{metrics?.timeReductionPercentage}% tiempo de triaje
+                    <span className="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-300 block">
+                      Estado del Microservicio ML
+                    </span>
+                    <span
+                      className={`text-lg font-black ${
+                        mlInfo?.mlServiceOnline
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-amber-600 dark:text-amber-400'
+                      }`}
+                    >
+                      {mlInfo?.mlServiceOnline ? 'En Línea · Modelo Activo' : 'Sin conexión / Sin entrenar'}
                     </span>
                   </div>
                 </TiltGlassCard>
               </div>
 
-              {/* 3 Metric Cards */}
+              {/* 3 Real Telemetry Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">Triaje por Convocatoria</span>
+                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">
+                    ROC-AUC Real (Test Set)
+                  </span>
                   <div className="flex items-baseline gap-2 relative z-10">
-                    <span className="text-2xl font-black text-rose-600 dark:text-rose-400">{metrics?.manualFilterTimeDays} días</span>
-                    <span className="text-slate-400 text-xs">➔</span>
-                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{metrics?.platformFilterTimeMinutes} min</span>
+                    <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                      {mlInfo?.rocAuc ?? 0}%
+                    </span>
+                    {mlInfo?.rawMetrics?.baseline_cosine?.roc_auc != null && (
+                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                        (Base coseno: {Math.round(mlInfo.rawMetrics.baseline_cosine.roc_auc * 1000) / 10}%)
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 relative z-10">
-                    De ~115 horas de espera preliminar a clasificación algorítmica inmediata en segundos.
+                    Capacidad discriminativa real medida en validación sobre {mlInfo?.rawMetrics?.n_test ?? 0} pares de prueba.
                   </p>
                 </TiltGlassCard>
 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">Precisión en Selección</span>
+                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">
+                    Predicciones ML Registradas
+                  </span>
                   <div className="flex items-baseline gap-2 relative z-10">
-                    <span className="text-2xl font-black text-slate-500 dark:text-slate-400">{metrics?.manualScreeningAccuracy}%</span>
-                    <span className="text-slate-400 text-xs">➔</span>
-                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{metrics?.platformScreeningAccuracy}%</span>
+                    <span className="text-3xl font-black text-slate-900 dark:text-white">
+                      {mlInfo?.totalPredictions ?? 0}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      inferencias reales
+                    </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 relative z-10">
-                    Mayor concordancia de competencias técnicas extraídas mediante similitud vectorial.
+                    Conteo exacto de evaluaciones en la tabla PrediccionML ({applicationsList.length} postulaciones totales en BD).
                   </p>
                 </TiltGlassCard>
 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">Satisfacción Promedio</span>
+                  <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 block relative z-10">
+                    Dataset de Entrenamiento
+                  </span>
                   <div className="flex items-baseline gap-2 relative z-10">
-                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{metrics?.averageSatisfactionScore} / 5.0</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Estrellas</span>
+                    <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                      {mlInfo?.datasetSize ?? 0}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      pares vacante-CV
+                    </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 relative z-10">
-                    {metrics?.totalApplicationsProcessed} postulaciones procesadas sin sesgos demográficos en todas las empresas.
+                    {mlInfo?.rawMetrics?.n_train ?? 0} entrenamiento · {mlInfo?.rawMetrics?.n_test ?? 0} prueba · {mlInfo?.totalDatasets ?? 0} datasets en BD.
                   </p>
                 </TiltGlassCard>
               </div>
@@ -693,35 +747,126 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl">
                   <span className="text-[11px] font-bold uppercase text-[#70553b] dark:text-slate-400 block relative z-10">Accuracy Global</span>
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
-                    {mlInfo?.accuracy}%
+                    {mlInfo?.accuracy ?? 0}%
                   </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">Umbral cumplido</span>
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
+                    {mlInfo?.isRealModel ? 'Medido en conjunto de prueba' : 'Sin modelo entrenado'}
+                  </span>
                 </TiltGlassCard>
 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl">
                   <span className="text-[11px] font-bold uppercase text-[#70553b] dark:text-slate-400 block relative z-10">Precision</span>
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
-                    {mlInfo?.precision}%
+                    {mlInfo?.precision ?? 0}%
                   </span>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">Mínimo falso positivo</span>
+                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">
+                    Exactitud sobre positivos predichos
+                  </span>
                 </TiltGlassCard>
 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl">
                   <span className="text-[11px] font-bold uppercase text-[#70553b] dark:text-slate-400 block relative z-10">Recall</span>
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
-                    {mlInfo?.recall}%
+                    {mlInfo?.recall ?? 0}%
                   </span>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">Sensibilidad de detección</span>
+                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">
+                    Sensibilidad de detección real
+                  </span>
                 </TiltGlassCard>
 
                 <TiltGlassCard maxTiltDeg={3.5} className="p-5 rounded-2xl">
                   <span className="text-[11px] font-bold uppercase text-[#70553b] dark:text-slate-400 block relative z-10">F1-Score</span>
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
-                    {mlInfo?.f1Score}%
+                    {mlInfo?.f1Score ?? 0}%
                   </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">Media armónica óptima</span>
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
+                    Criterio de selección de modelo
+                  </span>
                 </TiltGlassCard>
               </div>
+
+              {/* Comparativa Real de los Modelos de Scikit-Learn */}
+              {mlInfo?.rawMetrics?.comparison && (
+                <TiltGlassCard maxTiltDeg={1.2} className="p-6 rounded-3xl space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 relative z-10">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Comparativa Real de Modelos Entrenados (Scikit-Learn)</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                        Criterio real: {mlInfo.rawMetrics.selection_criterion || 'Mayor promedio F1 en validación cruzada'}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">
+                      Modelo ganador: {mlInfo.rawMetrics.selected_model || mlInfo.algorithm}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto relative z-10">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-slate-200/70 dark:border-white/10 text-[10px] uppercase font-black text-slate-500 dark:text-slate-400">
+                        <tr>
+                          <th className="py-2.5 pr-4">Modelo</th>
+                          <th className="py-2.5 px-3">CV F1 (5-Fold)</th>
+                          <th className="py-2.5 px-3">CV ROC-AUC</th>
+                          <th className="py-2.5 px-3">Test Accuracy</th>
+                          <th className="py-2.5 px-3">Test Precision</th>
+                          <th className="py-2.5 px-3">Test Recall</th>
+                          <th className="py-2.5 px-3">Test F1</th>
+                          <th className="py-2.5 pl-3">Test ROC-AUC</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/50 dark:divide-white/10 font-mono">
+                        {Object.entries(mlInfo.rawMetrics.comparison as Record<string, any>).map(([modelKey, data]) => {
+                          const isSelected = mlInfo.rawMetrics?.selected_model === modelKey;
+                          const cv = data?.cv_train || {};
+                          const t = data?.test || {};
+                          const pct = (v: any) => (typeof v === 'number' ? `${Math.round(v * 1000) / 10}%` : '—');
+                          return (
+                            <tr
+                              key={modelKey}
+                              className={isSelected ? 'bg-emerald-500/10 font-bold' : ''}
+                            >
+                              <td className="py-2.5 pr-4 font-sans font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                <span>{modelKey.replace(/_/g, ' ')}</span>
+                                {isSelected && (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] uppercase font-black">
+                                    Activo
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300">
+                                {cv.f1_mean != null ? `${Math.round(cv.f1_mean * 1000) / 10}% ± ${Math.round((cv.f1_std || 0) * 1000) / 10}%` : '—'}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300">{pct(cv.roc_auc_mean)}</td>
+                              <td className="py-2.5 px-3 text-slate-900 dark:text-slate-100">{pct(t.accuracy)}</td>
+                              <td className="py-2.5 px-3 text-slate-900 dark:text-slate-100">{pct(t.precision)}</td>
+                              <td className="py-2.5 px-3 text-slate-900 dark:text-slate-100">{pct(t.recall)}</td>
+                              <td className="py-2.5 px-3 text-emerald-700 dark:text-emerald-400 font-bold">{pct(t.f1)}</td>
+                              <td className="py-2.5 pl-3 text-slate-900 dark:text-slate-100">{pct(t.roc_auc)}</td>
+                            </tr>
+                          );
+                        })}
+                        {mlInfo.rawMetrics.baseline_cosine && (
+                          <tr className="text-slate-500 dark:text-slate-400">
+                            <td className="py-2.5 pr-4 font-sans font-semibold italic">
+                              Línea base coseno (umbral {mlInfo.rawMetrics.baseline_cosine.threshold})
+                            </td>
+                            <td className="py-2.5 px-3">—</td>
+                            <td className="py-2.5 px-3">—</td>
+                            <td className="py-2.5 px-3">{Math.round((mlInfo.rawMetrics.baseline_cosine.accuracy || 0) * 1000) / 10}%</td>
+                            <td className="py-2.5 px-3">{Math.round((mlInfo.rawMetrics.baseline_cosine.precision || 0) * 1000) / 10}%</td>
+                            <td className="py-2.5 px-3">{Math.round((mlInfo.rawMetrics.baseline_cosine.recall || 0) * 1000) / 10}%</td>
+                            <td className="py-2.5 px-3">{Math.round((mlInfo.rawMetrics.baseline_cosine.f1 || 0) * 1000) / 10}%</td>
+                            <td className="py-2.5 pl-3">{Math.round((mlInfo.rawMetrics.baseline_cosine.roc_auc || 0) * 1000) / 10}%</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </TiltGlassCard>
+              )}
 
               {/* Hyperparameter Tuner & Ethical Audit Grid */}
               <TiltGlassCard
@@ -963,7 +1108,72 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                             <span className="text-emerald-600 font-bold">Estado: {comp.estado || 'ACTIVA'}</span>
                           </div>
 
+                          {/* Plazo de desactivación automática (Superadmin) */}
+                          <div className="pt-2 border-t border-[#c8b193]/40 dark:border-[#4d3c2e]/40 space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                              <span>Plazo de vigencia (opcional):</span>
+                              {(comp as any).activaHasta && (
+                                <span className="text-amber-700 dark:text-amber-400 font-mono">
+                                  Hasta {new Date((comp as any).activaHasta).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="date"
+                                value={
+                                  deadlineDrafts[comp.id] ??
+                                  ((comp as any).activaHasta
+                                    ? new Date((comp as any).activaHasta).toISOString().slice(0, 10)
+                                    : '')
+                                }
+                                onChange={(e) =>
+                                  setDeadlineDrafts((prev) => ({ ...prev, [comp.id]: e.target.value }))
+                                }
+                                className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[11px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSetCompanyDeadline(
+                                    comp.id,
+                                    comp.nombre,
+                                    deadlineDrafts[comp.id] ||
+                                      ((comp as any).activaHasta
+                                        ? new Date((comp as any).activaHasta).toISOString().slice(0, 10)
+                                        : null)
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shrink-0"
+                              >
+                                Fijar
+                              </button>
+                              {(comp as any).activaHasta && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeadlineDrafts((prev) => ({ ...prev, [comp.id]: '' }));
+                                    handleSetCompanyDeadline(comp.id, comp.nombre, null);
+                                  }}
+                                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
+                                  title="Quitar plazo"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
                           {/* Acciones de SuperAdmin para Empresas Pendientes o Activas */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            leftIcon={<Eye className="w-4 h-4" />}
+                            onClick={() => setViewingCompanyId(comp.id)}
+                            className="w-full font-bold text-xs mt-3 cursor-pointer"
+                          >
+                            Ver Perfil (Solo lectura)
+                          </Button>
                           {isPending && (
                             <Button
                               size="sm"
@@ -1171,6 +1381,16 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="inline-flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setViewingUserId(usr.id)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 transition-all cursor-pointer"
+                                title={`Ver perfil completo de ${usr.name} (solo lectura)`}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Ver perfil</span>
+                              </button>
+
                               {isCompanyAdmin && (
                                 <button
                                   type="button"
@@ -1605,6 +1825,24 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
           </div>
         </div>
       </Modal>
+
+      {/* Modal de Perfil Público de Empresa (Solo lectura para Superadmin) */}
+      <CompanyPublicProfileModal
+        companyId={viewingCompanyId}
+        isOpen={Boolean(viewingCompanyId)}
+        onClose={() => setViewingCompanyId(null)}
+      />
+
+      {/* Modal de Perfil de Usuario / Candidato (Solo lectura para Superadmin) */}
+      <UserProfileReadOnlyModal
+        userId={viewingUserId}
+        isOpen={Boolean(viewingUserId)}
+        onClose={() => setViewingUserId(null)}
+        onViewCompany={(cid) => {
+          setViewingUserId(null);
+          setViewingCompanyId(cid);
+        }}
+      />
     </div>
   );
 };
