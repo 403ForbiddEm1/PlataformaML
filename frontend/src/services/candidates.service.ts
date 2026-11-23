@@ -177,6 +177,7 @@ export const candidatesService = {
       try {
         await api.put('/candidates/me', {
           ...updates,
+          telegramUsername: updates.telegramUsername !== undefined ? updates.telegramUsername : undefined,
           ubicacion: updates.location !== undefined ? updates.location : undefined,
           perfilVisible: nextVisibility.profileVisible,
           telegramLinked: updates.telegramLinked,

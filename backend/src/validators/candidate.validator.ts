@@ -5,6 +5,7 @@ export const updateCandidateProfileSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   phone: z.string().optional(),
+  telegramUsername: z.string().max(64).optional(),
   photoUrl: z.string().nullable().optional(),
   title: z.string().optional(),
   bio: z.string().optional(),

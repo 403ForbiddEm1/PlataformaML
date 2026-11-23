@@ -249,10 +249,11 @@ model Usuario {
   correo    String  @unique
   claveHash String? // hash (bcrypt/argon2), nunca texto plano
   googleId  String? @unique
-  nombre    String
-  apellido  String
-  telefono  String? // formato E.164
-  fotoRuta  String? // ruta privada en el almacenamiento (no es una URL pública)
+  nombre           String
+  apellido         String
+  telefono         String? // formato E.164
+  telegramUsername String? // @usuario real de Telegram para entrega directa
+  fotoRuta         String? // ruta privada en el almacenamiento (no es una URL pública)
   rol       Rol     @default(CANDIDATO)
   activo    Boolean @default(true) // false = desactivado (soft delete)
 

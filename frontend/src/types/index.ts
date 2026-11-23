@@ -128,6 +128,7 @@ export interface CandidateProfile {
   age?: number;
   email: string;
   phone: string;
+  telegramUsername?: string;
   title: string;
   bio: string;
   location: string;

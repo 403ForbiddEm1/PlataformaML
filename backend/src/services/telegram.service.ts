@@ -96,16 +96,20 @@ function registrarListenerMensajesEntrantes(empresaId: string, client: TelegramC
         }
       }
 
-      // Buscar qué candidato que se postuló a esta empresa coincide por teléfono o @usuario
+      // Buscar qué candidato que se postuló a esta empresa coincide por @usuario o teléfono
       const conversacionesAbiertas = await prisma.conversacion.findMany({
         where: { empresaId, cerradaEn: null },
         include: {
-          candidato: { select: { id: true, telefono: true } },
+          candidato: { select: { id: true, telefono: true, telegramUsername: true } },
         },
         orderBy: { ultimoMensajeEn: 'desc' },
       });
 
       const convCoincidente = conversacionesAbiertas.find((c) => {
+        const handle = normalizarDestinoCandidato(c.candidato.telegramUsername);
+        if (senderUsername && handle && handle.toLowerCase() === senderUsername) {
+          return true;
+        }
         const dest = normalizarDestinoCandidato(c.candidato.telefono);
         if (!dest) return false;
         if (senderPhone && dest.replace(/[^0-9]/g, '').endsWith(senderPhone.replace(/[^0-9]/g, '').slice(-9))) {
@@ -369,17 +373,32 @@ export const telegramService = {
     message: string;
     respaldoGlobal?: boolean;
   }): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    let destino = normalizarDestinoCandidato(options.toFallback);
+    let destinoUsername: string | null = null;
+    let destinoPhone: string | null = null;
 
-    if (!destino && options.usuarioId) {
+    const fallbackNorm = normalizarDestinoCandidato(options.toFallback);
+    if (fallbackNorm?.startsWith('@')) destinoUsername = fallbackNorm;
+    else if (fallbackNorm) destinoPhone = fallbackNorm;
+
+    if (options.usuarioId) {
       const u = await prisma.usuario
         .findUnique({
           where: { id: options.usuarioId },
-          select: { telefono: true },
+          select: { telefono: true, telegramUsername: true },
         })
         .catch(() => null);
-      destino = normalizarDestinoCandidato(u?.telefono);
+      if (u?.telegramUsername) {
+        const normU = normalizarDestinoCandidato(u.telegramUsername);
+        if (normU) destinoUsername = normU.startsWith('@') ? normU : `@${normU.replace(/^@+/, '')}`;
+      }
+      if (!destinoPhone && u?.telefono) {
+        const normP = normalizarDestinoCandidato(u.telefono);
+        if (normP?.startsWith('@') && !destinoUsername) destinoUsername = normP;
+        else if (normP) destinoPhone = normP;
+      }
     }
+
+    const destino = destinoUsername || destinoPhone;
 
     const client = await this.obtenerClienteEmpresa(options.empresaId, {
       respaldoGlobal: options.respaldoGlobal,
@@ -387,7 +406,7 @@ export const telegramService = {
 
     if (!client) {
       console.log(
-        `[TELEGRAM_NO_CONECTADO] (Empresa ${options.empresaId ?? 'global'} -> Candidato ${destino ?? 'sin-numero'}): No hay sesión MTProto activa.`,
+        `[TELEGRAM_NO_CONECTADO] (Empresa ${options.empresaId ?? 'global'} -> Candidato ${destino ?? 'sin-destino'}): No hay sesión MTProto activa.`,
       );
       return {
         success: false,
@@ -396,44 +415,64 @@ export const telegramService = {
     }
 
     if (!destino) {
-      return { success: false, error: 'El candidato no tiene número de teléfono ni @usuario de Telegram registrado' };
+      return { success: false, error: 'El candidato no tiene @usuario de Telegram ni número de teléfono registrado' };
     }
 
     try {
-      // Verificar si el número destino es el mismo número de la cuenta de Telegram conectada (empresa y candidato comparten número)
-      let entidadDestino: any = destino;
+      let entidadDestino: any = null;
       const me: any = await client.getMe().catch(() => null);
+      const meUsername = me?.username ? `@${String(me.username).toLowerCase()}` : '';
       const meDigits = me?.phone ? String(me.phone).replace(/[^0-9]/g, '') : '';
-      const destDigits = destino.replace(/[^0-9]/g, '');
 
-      if (meDigits && destDigits && destDigits.slice(-9) === meDigits.slice(-9)) {
-        // Mismo número en empresa y candidato -> entregar en el chat personal ("Mensajes Guardados" / "me") de ese Telegram
-        entidadDestino = 'me';
-      } else if (destino.startsWith('+')) {
-        const importRes: any = await client
-          .invoke(
-            new Api.contacts.ImportContacts({
-              contacts: [
-                new Api.InputPhoneContact({
-                  clientId: BigInt(Date.now()) as any,
-                  phone: destino.replace(/^\+/, ''),
-                  firstName: 'Candidato',
-                  lastName: 'PlataformaML',
-                }),
-              ],
-            }),
-          )
-          .catch(() => null);
-
-        if (importRes?.users?.[0]) {
-          entidadDestino = importRes.users[0];
+      // 1. Prioridad absoluta: conectar directo por @usuario real de Telegram (evita bloqueos de privacidad de teléfono)
+      if (destinoUsername) {
+        const cleanHandle = destinoUsername.replace(/^@+/, '').trim();
+        if (meUsername && `@${cleanHandle.toLowerCase()}` === meUsername) {
+          entidadDestino = 'me';
         } else {
-          const resolved = await client.getEntity(destino).catch(() => null);
-          if (resolved) entidadDestino = resolved;
+          const resolvedUser: any = await client
+            .invoke(new Api.contacts.ResolveUsername({ username: cleanHandle }))
+            .catch(() => null);
+          if (resolvedUser?.users?.[0]) {
+            entidadDestino = resolvedUser.users[0];
+          } else {
+            entidadDestino = await client.getEntity(`@${cleanHandle}`).catch(() => `@${cleanHandle}`);
+          }
         }
       }
 
-      const sent: any = await client.sendMessage(entidadDestino, {
+      // 2. Respaldo por número telefónico si no hubo @usuario o no se resolvió
+      if (!entidadDestino && destinoPhone) {
+        const destDigits = destinoPhone.replace(/[^0-9]/g, '');
+        if (meDigits && destDigits && destDigits.slice(-9) === meDigits.slice(-9)) {
+          entidadDestino = 'me';
+        } else if (destinoPhone.startsWith('+')) {
+          const importRes: any = await client
+            .invoke(
+              new Api.contacts.ImportContacts({
+                contacts: [
+                  new Api.InputPhoneContact({
+                    clientId: BigInt(Date.now()) as any,
+                    phone: destinoPhone.replace(/^\+/, ''),
+                    firstName: 'Candidato',
+                    lastName: 'PlataformaML',
+                  }),
+                ],
+              }),
+            )
+            .catch(() => null);
+
+          if (importRes?.users?.[0]) {
+            entidadDestino = importRes.users[0];
+          } else {
+            entidadDestino = (await client.getEntity(destinoPhone).catch(() => null)) || destinoPhone;
+          }
+        } else {
+          entidadDestino = destinoPhone;
+        }
+      }
+
+      const sent: any = await client.sendMessage(entidadDestino || destino, {
         message: options.message,
       });
 

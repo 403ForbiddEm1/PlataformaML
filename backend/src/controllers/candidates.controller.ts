@@ -58,6 +58,7 @@ export const candidatesController = {
         lastName: usuario.apellido,
         email: usuario.correo,
         phone: usuario.telefono || '',
+        ...((usuario as any).telegramUsername ? { telegramUsername: (usuario as any).telegramUsername } : {}),
         title: perfil.titulo || '',
         bio: perfil.biografia || '',
         location: perfil.ubicacion || '',
@@ -104,11 +105,18 @@ export const candidatesController = {
         });
       }
 
-      // Actualizar datos del usuario si se enviaron (teléfono, nombre, apellido)
+      // Actualizar datos del usuario si se enviaron (teléfono, @usuario Telegram, nombre, apellido)
       const userUpdate: any = {};
       if (body.phone !== undefined) {
         userUpdate.telefono = body.phone;
         if (body.phone && body.phone.trim().length >= 5 && body.telegramLinked !== false) {
+          userUpdate.consentimientoWhatsappEn = new Date();
+        }
+      }
+      if (body.telegramUsername !== undefined) {
+        const cleanHandle = body.telegramUsername.trim().replace(/^@+/, '');
+        userUpdate.telegramUsername = cleanHandle ? `@${cleanHandle}` : null;
+        if (cleanHandle && body.telegramLinked !== false) {
           userUpdate.consentimientoWhatsappEn = new Date();
         }
       }

@@ -232,6 +232,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
   // Contacto y Ubicación editables manualmente + Visibilidad de secciones
   const [editEmail, setEditEmail] = useState(user?.email || '');
   const [editPhone, setEditPhone] = useState(user?.phone || '');
+  const [editTelegramUsername, setEditTelegramUsername] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [telegramLinkedPhone, setTelegramLinkedPhone] = useState<string>(() => {
@@ -269,29 +270,37 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
   const handleLinkCandidateTelegram = async () => {
     const cleanPhone = editPhone.trim();
-    if (!cleanPhone || !validatePhoneFormat(cleanPhone)) {
-      setPhoneError('Ingresa un número válido con código de país (ej. +58 412 0000000).');
-      showToast('Número requerido', 'Escribe un número de teléfono válido para vincular con Telegram.', 'error');
+    const rawUser = editTelegramUsername.trim().replace(/^@+/, '');
+    const cleanUser = rawUser ? `@${rawUser}` : '';
+    if ((!cleanPhone || !validatePhoneFormat(cleanPhone)) && !cleanUser) {
+      setPhoneError('Ingresa tu @usuario de Telegram y/o un número válido (ej. +58 412 0000000).');
+      showToast('Datos requeridos', 'Escribe tu @usuario de Telegram o un número válido para vincular.', 'error');
       return;
     }
     try {
       const updated = await candidatesService.updateProfile(
-        { phone: cleanPhone, telegramLinked: true },
+        {
+          ...(cleanPhone ? { phone: cleanPhone } : {}),
+          telegramUsername: cleanUser,
+          telegramLinked: true,
+        },
         editEmail.trim() || user?.email,
       );
       setProfile(updated);
+      setEditTelegramUsername(cleanUser);
       setPhoneError('');
+      const displayTarget = cleanUser || cleanPhone;
       const cleanEm = (editEmail.trim() || user?.email || '').toLowerCase();
-      localStorage.setItem(`nexo_candidate_tlg_${cleanEm}`, cleanPhone);
+      localStorage.setItem(`nexo_candidate_tlg_${cleanEm}`, displayTarget);
       localStorage.removeItem(`nexo_candidate_tlg_unlinked_${cleanEm}`);
-      setTelegramLinkedPhone(cleanPhone);
+      setTelegramLinkedPhone(displayTarget);
       showToast(
         '¡Vinculado con Telegram!',
-        `Tu número ${cleanPhone} quedó conectado para recibir avisos y responder mensajes de las empresas por Telegram.`,
+        `Tu cuenta ${cleanUser ? `${cleanUser}${cleanPhone ? ` (${cleanPhone})` : ''}` : cleanPhone} quedó conectada directamente con Telegram.`,
         'success',
       );
     } catch {
-      showToast('Error', 'No se pudo vincular el número con Telegram.', 'error');
+      showToast('Error', 'No se pudo vincular tu cuenta con Telegram.', 'error');
     }
   };
 
@@ -1652,46 +1661,63 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             </button>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="tel"
-                              value={editPhone}
-                              onChange={(e) => setEditPhone(e.target.value)}
-                              placeholder="+58 412 0000000"
-                              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC] focus:outline-none focus:border-[#0B5D46] dark:focus:border-[#C8FF45]"
-                            />
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              <input
+                                type="tel"
+                                value={editPhone}
+                                onChange={(e) => setEditPhone(e.target.value)}
+                                placeholder="Teléfono (+58 412 0000000)"
+                                className="w-full min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC] focus:outline-none focus:border-[#0B5D46] dark:focus:border-[#C8FF45]"
+                              />
+                              <input
+                                type="text"
+                                value={editTelegramUsername}
+                                onChange={(e) => setEditTelegramUsername(e.target.value)}
+                                placeholder="@usuario de Telegram"
+                                className="w-full min-w-0 px-2.5 py-1.5 rounded-lg text-xs bg-[#F6EEE2]/70 dark:bg-[#090A0C]/70 border border-[#C8B193] dark:border-[#F1F2EC]/15 text-slate-800 dark:text-[#F1F2EC] focus:outline-none focus:border-[#0B5D46] dark:focus:border-[#C8FF45]"
+                              />
+                            </div>
 
-                            {/* Si ya está conectado, botón para Desvincular; si no, botón con logo de Telegram para Conectar */}
-                            {telegramLinkedPhone && telegramLinkedPhone === editPhone.trim() ? (
-                              <button
-                                type="button"
-                                onClick={handleUnlinkCandidateTelegram}
-                                title="Desvincular Telegram de tu perfil"
-                                className="press inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/30 transition-all"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Desvincular</span>
-                              </button>
-                            ) : (
-                              editPhone.trim().length >= 5 && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                Pon tu <strong>@usuario</strong> para entrega directa aunque tu número esté oculto en Telegram.
+                              </span>
+
+                              {/* Si ya está conectado, botón para Desvincular; si no, botón con logo de Telegram para Conectar */}
+                              {telegramLinkedPhone &&
+                              (telegramLinkedPhone === editTelegramUsername.trim() ||
+                                telegramLinkedPhone === editPhone.trim()) ? (
                                 <button
                                   type="button"
-                                  onClick={handleLinkCandidateTelegram}
-                                  title="Conectar a Telegram"
-                                  className="press group relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-[#229ED9] hover:bg-[#1d8ec4] text-white border-[#1b86b8] shadow-xs transition-all"
+                                  onClick={handleUnlinkCandidateTelegram}
+                                  title="Desvincular Telegram de tu perfil"
+                                  className="press inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/30 transition-all"
                                 >
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    className="w-3.5 h-3.5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:-rotate-6"
-                                    aria-hidden="true"
-                                  >
-                                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-                                  </svg>
-                                  <span>Conectar a Telegram</span>
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Desvincular</span>
                                 </button>
-                              )
-                            )}
+                              ) : (
+                                (editPhone.trim().length >= 5 || editTelegramUsername.trim().replace(/^@+/, '').length >= 3) && (
+                                  <button
+                                    type="button"
+                                    onClick={handleLinkCandidateTelegram}
+                                    title="Conectar a Telegram"
+                                    className="press group relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer shrink-0 border bg-[#229ED9] hover:bg-[#1d8ec4] text-white border-[#1b86b8] shadow-xs transition-all"
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      fill="currentColor"
+                                      className="w-3.5 h-3.5 shrink-0 transition-transform duration-200 group-hover:scale-110 group-hover:-rotate-6"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                                    </svg>
+                                    <span>Conectar a Telegram</span>
+                                  </button>
+                                )
+                              )}
+                            </div>
                           </div>
                         </div>
 
