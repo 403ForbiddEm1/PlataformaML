@@ -75,6 +75,7 @@ export const candidatesService = {
             skills: Array.isArray(p.skills) ? p.skills : [],
             cvFileName: p.cvFileName || '',
             idCardFileName: p.idCardFileName || '',
+            photoUrl: p.photoUrl || undefined,
           };
 
           localStorage.setItem(getStorageKey(targetEmail), JSON.stringify(profile));
@@ -188,22 +189,19 @@ export const candidatesService = {
     return updated;
   },
 
-  async uploadCVDocument(file: File): Promise<{ id?: string; filename: string }> {
+  async uploadCVDocument(file: File): Promise<{ id?: string; filename: string; extracted?: any }> {
     if (!USE_MOCK) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('tipo', 'CURRICULO');
-        const res = await api.post<any>('/candidates/me/documents', formData);
-        const data = (res.data as any)?.data || res.data;
-        return {
-          id: data?.id,
-          filename: data?.filename || file.name,
-        };
-      } catch (err) {
-        console.warn('Subida de CV guardada localmente:', err);
-      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tipo', 'CURRICULO');
+      const res = await api.upload<any>('/candidates/me/documents', formData);
+      const data = (res.data as any)?.data || res.data;
+      return {
+        id: data?.id,
+        filename: data?.filename || file.name,
+        extracted: data?.extracted || null,
+      };
     }
-    return { filename: file.name };
+    return { filename: file.name, extracted: null };
   },
 };

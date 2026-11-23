@@ -22,8 +22,10 @@
     "google-auth-library": "^11.3.3",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.13.0",
     "multer": "^2.4.0",
     "nodemailer": "^10.2.1",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.23.1",
     "telegram": "^2.26.22",
     "zod": "^4.6.7"
@@ -38,6 +40,7 @@
     "@types/multer": "^2.3.0",
     "@types/node": "^26.6.5",
     "@types/nodemailer": "^8.0.2",
+    "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.23.1",
     "prisma": "^7.10.1",
     "prisma-erd-generator": "^3.2.1",

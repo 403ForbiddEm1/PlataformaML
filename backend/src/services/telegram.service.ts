@@ -143,51 +143,52 @@ export const telegramService = {
   /**
    * Obtiene o restaura desde PostgreSQL (Neon) el cliente de Telegram propio de una empresa
    */
-  async obtenerClienteEmpresa(empresaId?: string | null): Promise<TelegramClient | null> {
-    if (!empresaId) return null;
+  async obtenerClienteEmpresa(
+    empresaId?: string | null,
+    opciones: { respaldoGlobal?: boolean } = {},
+  ): Promise<TelegramClient | null> {
     const creds = obtenerCredencialesApi();
     if (!creds) return null;
 
-    const enMemoria = clientesPorEmpresa.get(empresaId);
-    if (enMemoria && enMemoria.connected) {
-      return enMemoria;
-    }
+    // Aislamiento por empresa: los mensajes de chat solo salen de la cuenta de Telegram de ESA empresa.
+    // Solo los códigos de seguridad de la plataforma (respaldoGlobal) pueden usar la última sesión conectada.
+    let registro = empresaId
+      ? await prisma.registroAuditoria
+          .findFirst({
+            where: { empresaId, accion: 'EMPRESA_TELEGRAM_SESION' },
+            orderBy: { creadoEn: 'desc' },
+          })
+          .catch(() => null)
+      : null;
 
-    // Buscar la sesión guardada de esta empresa en la base de datos (o sesión global de respaldo)
-    let registro = await prisma.registroAuditoria
-      .findFirst({
-        where: {
-          empresaId,
-          accion: 'EMPRESA_TELEGRAM_SESION',
-        },
-        orderBy: { creadoEn: 'desc' },
-      })
-      .catch(() => null);
-
-    if (!registro) {
+    if (!registro && opciones.respaldoGlobal) {
       registro = await prisma.registroAuditoria
         .findFirst({
-          where: {
-            accion: 'EMPRESA_TELEGRAM_SESION',
-          },
+          where: { accion: 'EMPRESA_TELEGRAM_SESION' },
           orderBy: { creadoEn: 'desc' },
         })
         .catch(() => null);
     }
 
     const sessionStr = (registro?.detalle as any)?.sessionString as string | undefined;
-    if (!sessionStr) return null;
+    if (!registro || !sessionStr) return null;
+
+    const cacheKey = registro.empresaId || 'global';
+    const enMemoria = clientesPorEmpresa.get(cacheKey);
+    if (enMemoria && enMemoria.connected) {
+      return enMemoria;
+    }
 
     try {
       const client = new TelegramClient(new StringSession(sessionStr), creds.apiId, creds.apiHash, {
         connectionRetries: 3,
       });
       await client.connect();
-      registrarListenerMensajesEntrantes(empresaId, client);
-      clientesPorEmpresa.set(empresaId, client);
+      registrarListenerMensajesEntrantes(cacheKey, client);
+      clientesPorEmpresa.set(cacheKey, client);
       return client;
     } catch (err: any) {
-      console.warn(`[TELEGRAM] No se pudo reconectar la sesión de la empresa ${empresaId}:`, err?.message);
+      console.warn(`[TELEGRAM] No se pudo reconectar la sesión de Telegram (${cacheKey}):`, err?.message);
       return null;
     }
   },
@@ -278,12 +279,16 @@ export const telegramService = {
     const me: any = await client.getMe();
     const sessionString = (client.session as StringSession).save();
 
+    const empresaExistente = await prisma.empresa
+      .findUnique({ where: { id: empresaId }, select: { id: true } })
+      .catch(() => null);
+
     await prisma.registroAuditoria.create({
       data: {
-        usuarioId: usuarioAdminId,
-        empresaId,
+        usuarioId: usuarioAdminId || null,
+        empresaId: empresaExistente?.id ?? null,
         accion: 'EMPRESA_TELEGRAM_SESION',
-        entidad: 'Empresa',
+        entidad: empresaExistente ? 'Empresa' : 'Usuario',
         entidadId: empresaId,
         detalle: {
           sessionString,
@@ -295,9 +300,21 @@ export const telegramService = {
       },
     });
 
+    if (usuarioAdminId) {
+      await prisma.usuario
+        .update({
+          where: { id: usuarioAdminId },
+          data: {
+            telefono,
+            consentimientoWhatsappEn: new Date(),
+          },
+        })
+        .catch(() => {});
+    }
+
     vinculacionPendiente.delete(empresaId);
-    registrarListenerMensajesEntrantes(empresaId, client);
-    clientesPorEmpresa.set(empresaId, client);
+    registrarListenerMensajesEntrantes(empresaExistente?.id || 'global', client);
+    clientesPorEmpresa.set(empresaExistente?.id || 'global', client);
 
     return {
       conectado: true,
@@ -350,6 +367,7 @@ export const telegramService = {
     usuarioId?: string | null;
     toFallback?: string | null;
     message: string;
+    respaldoGlobal?: boolean;
   }): Promise<{ success: boolean; externalId?: string; error?: string }> {
     let destino = normalizarDestinoCandidato(options.toFallback);
 
@@ -363,13 +381,18 @@ export const telegramService = {
       destino = normalizarDestinoCandidato(u?.telefono);
     }
 
-    const client = await this.obtenerClienteEmpresa(options.empresaId);
+    const client = await this.obtenerClienteEmpresa(options.empresaId, {
+      respaldoGlobal: options.respaldoGlobal,
+    });
 
     if (!client) {
       console.log(
-        `[TELEGRAM_EMPRESA_DEV] (Empresa ${options.empresaId ?? 'global'} -> Candidato ${destino ?? 'sin-numero'}):\n${options.message}`,
+        `[TELEGRAM_NO_CONECTADO] (Empresa ${options.empresaId ?? 'global'} -> Candidato ${destino ?? 'sin-numero'}): No hay sesión MTProto activa.`,
       );
-      return { success: true };
+      return {
+        success: false,
+        error: 'Aún no hay una sesión de Telegram conectada en la plataforma.',
+      };
     }
 
     if (!destino) {

@@ -7,6 +7,7 @@ import { CandidateProfileResponse } from '../types';
 import { TipoDocumento, Rol } from '@prisma/client';
 import { storageService } from '../services/storage.service';
 import { auditService } from '../services/audit.service';
+import { analizarArchivoCv } from '../services/cv-parser.service';
 
 export const candidatesController = {
   async getProfile(req: Request, res: Response, next: NextFunction) {
@@ -72,7 +73,8 @@ export const candidatesController = {
         skills: perfil.habilidades || [],
         cvFileName: cvDoc?.nombreArchivo,
         idCardFileName: cedulaDoc?.nombreArchivo,
-      };
+        ...(usuario.fotoRuta ? { photoUrl: usuario.fotoRuta } : {}),
+      } as CandidateProfileResponse & { photoUrl?: string };
 
       res.json({
         success: true,
@@ -110,6 +112,7 @@ export const candidatesController = {
       }
       if (body.firstName !== undefined) userUpdate.nombre = body.firstName;
       if (body.lastName !== undefined) userUpdate.apellido = body.lastName;
+      if (body.photoUrl !== undefined) userUpdate.fotoRuta = body.photoUrl;
       if (body.telegramLinked === true) {
         userUpdate.consentimientoWhatsappEn = new Date();
       } else if (body.telegramLinked === false) {
@@ -229,12 +232,78 @@ export const candidatesController = {
         },
       });
 
+      let extracted: any = null;
+      if (tipo === TipoDocumento.CURRICULO && file.path) {
+        try {
+          extracted = await analizarArchivoCv(file.path);
+
+          let totalExpYears = 0;
+          if (extracted.experience && extracted.experience.length > 0) {
+            for (const exp of extracted.experience) {
+              const years = exp.period?.match(/\d{4}/g);
+              if (years && years.length >= 2) {
+                totalExpYears += Math.max(1, parseInt(years[1]) - parseInt(years[0]));
+              } else {
+                totalExpYears += 1;
+              }
+            }
+          }
+
+          await prisma.perfilCandidato.update({
+            where: { id: perfil.id },
+            data: {
+              ...(extracted.title ? { titulo: extracted.title } : {}),
+              ...(extracted.bio ? { biografia: extracted.bio } : {}),
+              ...(extracted.location ? { ubicacion: extracted.location } : {}),
+              habilidades: extracted.skills || [],
+              textoExtraido: extracted.texto || null,
+              aniosExperiencia: totalExpYears,
+              actualizadoEn: new Date(),
+            },
+          });
+
+          await prisma.educacionCandidato.deleteMany({ where: { perfilId: perfil.id } });
+          if (Array.isArray(extracted.education) && extracted.education.length > 0) {
+            await prisma.educacionCandidato.createMany({
+              data: extracted.education.map((e: any) => ({
+                perfilId: perfil!.id,
+                institucion: e.institution || '—',
+                titulo: e.degree || '—',
+                anioGraduacion: e.graduationYear ? parseInt(String(e.graduationYear)) || null : null,
+              })),
+            });
+          }
+
+          await prisma.experienciaCandidato.deleteMany({ where: { perfilId: perfil.id } });
+          if (Array.isArray(extracted.experience) && extracted.experience.length > 0) {
+            await prisma.experienciaCandidato.createMany({
+              data: extracted.experience.map((x: any) => {
+                const years = x.period?.match(/\d{4}/g);
+                const anioInicio = years && years[0] ? parseInt(years[0]) : new Date().getFullYear();
+                const anioFin = years && years[1] ? parseInt(years[1]) : null;
+                return {
+                  perfilId: perfil!.id,
+                  empresa: x.company || '—',
+                  cargo: x.role || '—',
+                  anioInicio,
+                  anioFin,
+                  descripcion: x.description || null,
+                };
+              }),
+            });
+          }
+        } catch (parseErr: any) {
+          console.warn('[UPLOAD_CV_PARSE]', parseErr?.message);
+        }
+      }
+
       res.status(201).json({
         success: true,
         data: {
           id: nuevoDoc.id,
           filename: nuevoDoc.nombreArchivo,
           tipo: nuevoDoc.tipo,
+          extracted,
         },
       });
     } catch (err) {

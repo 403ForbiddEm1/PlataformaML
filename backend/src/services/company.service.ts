@@ -118,7 +118,7 @@ export async function invitarMiembro(
   ]
     .filter(Boolean)
     .join('&');
-  const confirmUrl = `${appUrl}/accept-invitation?token=${tokenPlano}${queryExtras ? `&${queryExtras}` : ''}`;
+  const confirmUrl = `${appUrl}/?action=accept-invitation&token=${tokenPlano}${queryExtras ? `&${queryExtras}` : ''}`;
 
   await emailService
     .sendEmail({

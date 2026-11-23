@@ -6,18 +6,18 @@ import { empresaService } from '@/services/empresa.service';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/Button';
-import { useFolderAutoScroll } from '@/hooks/useFolderAutoScroll';
+import { Modal } from '@/components/ui/Modal';
 import {
   Search,
   MapPin,
   Building2,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Folder,
+  FolderOpen,
   Paperclip,
   CheckCircle2,
   ShieldCheck,
+  Briefcase,
 } from 'lucide-react';
 
 interface VacanciesCatalogPageProps {
@@ -42,11 +42,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
   const [search, setSearch] = useState('');
   const [workModeFilter, setWorkModeFilter] = useState('all');
   const [companyFilter, setCompanyFilter] = useState('all');
-  const [openFolderIds, setOpenFolderIds] = useState<Record<string, boolean>>({});
-  const { registerFolderRef, scheduleScrollIfNeeded } = useFolderAutoScroll({
-    stickyOffset: 84,
-    delayMs: 210,
-  });
+  const [selectedModalVacancy, setSelectedModalVacancy] = useState<Vacancy | null>(null);
   const [slideState, setSlideState] = useState<{
     current: number;
     previous: number | null;
@@ -68,20 +64,9 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
   useEffect(() => {
     vacanciesService.getAll().then((data) => {
       setVacancies(data);
-      if (data.length > 0) {
-        setOpenFolderIds((prev) => (Object.keys(prev).length === 0 ? { [data[0].id]: true } : prev));
-      }
     });
     empresaService.getAll().then(setCompanies);
   }, []);
-
-  const toggleFolder = (id: string) => {
-    scheduleScrollIfNeeded(id, openFolderIds);
-    setOpenFolderIds((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
 
   const filtered = vacancies.filter((v) => {
     if (workModeFilter !== 'all' && v.workMode !== workModeFilter) return false;
@@ -246,207 +231,219 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6 items-start">
-            {filtered.map((vac) => {
-              const isOpen = !!openFolderIds[vac.id];
-
-              return (
-                <div
-                  key={vac.id}
-                  ref={registerFolderRef(vac.id)}
-                  className="relative group transition-all duration-200 manila-folder-perspective"
-                >
-                  {/* Manila Folder Upper-Left Identifier Tab + 3D Back Cover Lip */}
-                  <div className="flex items-end justify-start pl-0 pr-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleFolder(vac.id)}
-                      className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-[11px] font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none hover:bg-[#DDD0B8] dark:hover:bg-[#332920] transition-colors"
-                    >
-                      <Folder className="w-3.5 h-3.5 text-[#7D5634] dark:text-[#C4A482]" />
-                      <span className="truncate max-w-[170px] sm:max-w-[220px]">
-                        {vac.empresaNombre || 'PlataformaML Corporativo'}
-                      </span>
-                      <span className="text-[#9C7E5E] dark:text-[#7D654F]">·</span>
-                      <span className="uppercase text-[10px] font-mono-tabular tracking-wider text-[#6E5236] dark:text-[#CBB399]">
-                        {vac.department}
-                      </span>
-                    </button>
-                    {/* Back cover lip giving physical 3D open-folder depth */}
-                    <div
-                      aria-hidden="true"
-                      className="h-2.5 flex-1 -ml-1 rounded-tr-xl bg-[#D8C3A5] dark:bg-[#2A2018] border-t border-r border-[#C4AE8D] dark:border-[#46372B] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,236,200,0.08)]"
-                    />
-                  </div>
-
-                  {/* Manila Folder 3D Body */}
-                  <div
-                    className={`manila-folder-body-3d rounded-xl rounded-tl-none p-5 sm:p-6 relative overflow-hidden ${
-                      isOpen ? 'ring-1 ring-[#0B5D46]/35 dark:ring-emerald-500/35' : ''
-                    }`}
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6 items-stretch">
+            {filtered.map((vac) => (
+              <div
+                key={vac.id}
+                onClick={() => setSelectedModalVacancy(vac)}
+                className="relative group transition-all duration-200 manila-folder-perspective cursor-pointer flex flex-col"
+              >
+                {/* Manila Folder Upper-Left Identifier Tab + 3D Back Cover Lip */}
+                <div className="flex items-end justify-start pl-0 pr-3">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedModalVacancy(vac);
+                    }}
+                    className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-[11px] font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none group-hover:bg-[#DDD0B8] dark:group-hover:bg-[#332920] transition-colors"
                   >
-                    {/* Subtle physical top folder crease */}
-                    <div
-                      aria-hidden="true"
-                      className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DFCBB0]/80 via-[#F4E7D2]/90 to-[#D4BE9E]/80 dark:from-[#32271E] dark:via-[#3E3025] dark:to-[#271E17]"
-                    />
-                    {/* Folder Cover Summary Header */}
-                    <div
-                      onClick={() => toggleFolder(vac.id)}
-                      className="cursor-pointer select-none space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
-                              {vac.workMode}
-                            </span>
-                            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
-                              {vac.type}
-                            </span>
-                            {vac.openings && (
-                              <span className="text-[11px] font-mono-tabular font-semibold px-2.5 py-0.5 rounded-md bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/70">
-                                {vac.openings} {vac.openings === 1 ? 'plaza' : 'plazas'}
-                              </span>
-                            )}
-                          </div>
+                    <Folder className="w-3.5 h-3.5 text-[#7D5634] dark:text-[#C4A482]" />
+                    <span className="truncate max-w-[170px] sm:max-w-[220px]">
+                      {vac.empresaNombre || 'PlataformaML Corporativo'}
+                    </span>
+                    <span className="text-[#9C7E5E] dark:text-[#7D654F]">·</span>
+                    <span className="uppercase text-[10px] font-mono-tabular tracking-wider text-[#6E5236] dark:text-[#CBB399]">
+                      {vac.department}
+                    </span>
+                  </button>
+                  <div
+                    aria-hidden="true"
+                    className="h-2.5 flex-1 -ml-1 rounded-tr-xl bg-[#D8C3A5] dark:bg-[#2A2018] border-t border-r border-[#C4AE8D] dark:border-[#46372B] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,236,200,0.08)]"
+                  />
+                </div>
 
-                          <h3 className="text-lg sm:text-xl font-bold text-[#261A0F] dark:text-[#F8EEE0] tracking-tight hover:text-[#0B5D46] dark:hover:text-emerald-400 transition-colors">
-                            {vac.title}
-                          </h3>
+                {/* Archivo Cerrado: solo portada y resumen de responsabilidades */}
+                <div className="manila-folder-body-3d flex-1 rounded-xl rounded-tl-none p-5 sm:p-6 relative overflow-hidden flex flex-col justify-between gap-4 group-hover:ring-1 group-hover:ring-[#0B5D46]/40 dark:group-hover:ring-[#C8FF45]/40 transition-all">
+                  <div
+                    aria-hidden="true"
+                    className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DFCBB0]/80 via-[#F4E7D2]/90 to-[#D4BE9E]/80 dark:from-[#32271E] dark:via-[#3E3025] dark:to-[#271E17]"
+                  />
 
-                          <p className="text-xs text-[#664C34] dark:text-[#BAA085] flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-[#85613C] dark:text-[#C4A482]" />
-                            <span>{vac.location}</span>
-                            <span>·</span>
-                            <span className="font-mono-tabular text-[11px]">
-                              EXP-{(vac.id || '01').slice(0, 6).toUpperCase()}
-                            </span>
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 flex items-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFolder(vac.id);
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#E2D2B8] hover:bg-[#D7C4A6] dark:bg-[#2F251D] dark:hover:bg-[#3B2E24] text-[#3A2818] dark:text-[#F0DFC8] border border-[#C4AE8D] dark:border-[#4A3B2E] font-semibold text-xs shadow-[0_3px_0_#927756] dark:shadow-[0_3px_0_#1a120c] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer"
-                          >
-                            {isOpen ? (
-                              <>
-                                <span>Cerrar</span>
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </>
-                            ) : (
-                              <>
-                                <span>Ficha</span>
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      {!isOpen && (
-                        <p className="text-xs text-[#5E452E] dark:text-[#B49B82] line-clamp-2 leading-relaxed pt-1">
-                          {vac.description}
-                        </p>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
+                        {vac.workMode}
+                      </span>
+                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
+                        {vac.type}
+                      </span>
+                      {vac.openings && (
+                        <span className="text-[11px] font-mono-tabular font-semibold px-2.5 py-0.5 rounded-md bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/70">
+                          {vac.openings} {vac.openings === 1 ? 'plaza' : 'plazas'}
+                        </span>
                       )}
                     </div>
 
-                    {/* Inner Bond Paper Sheet */}
-                    <div
-                      className={`transition-all duration-300 ease-out origin-top ${
-                        isOpen
-                          ? 'max-h-[1200px] opacity-100 mt-4 translate-y-0'
-                          : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none overflow-hidden'
-                      }`}
-                    >
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="neu-paper-surface manila-paper-sheet-3d rounded-lg p-5 space-y-4"
-                      >
-                        {/* Paper Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-[#E5DEC9] dark:border-slate-800">
-                          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                            <Paperclip className="w-3.5 h-3.5 text-[#85613C] dark:text-amber-400" />
-                            <span className="uppercase tracking-wider text-[11px] text-slate-600 dark:text-slate-300">
-                              Especificación Oficial del Cargo
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono-tabular text-slate-400 dark:text-slate-500">
-                            DOC-{vac.id}
-                          </span>
-                        </div>
+                    <div>
+                      <h3 className="text-lg sm:text-xl font-bold text-[#261A0F] dark:text-[#F8EEE0] tracking-tight group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] transition-colors">
+                        {vac.title}
+                      </h3>
+                      <p className="text-xs text-[#664C34] dark:text-[#BAA085] flex items-center gap-2 mt-1">
+                        <MapPin className="w-3.5 h-3.5 text-[#85613C] dark:text-[#C4A482] shrink-0" />
+                        <span className="truncate">{vac.location}</span>
+                        <span>·</span>
+                        <span className="font-mono-tabular text-[11px] shrink-0">
+                          EXP-{(vac.id || '01').slice(0, 6).toUpperCase()}
+                        </span>
+                      </p>
+                    </div>
 
-                        {/* Paper Body */}
-                        <div className="space-y-3.5 text-xs leading-relaxed">
-                          <div>
-                            <h4 className="font-bold uppercase tracking-wider text-[10px] text-slate-400 dark:text-slate-500 mb-1">
-                              Resumen de Responsabilidades
-                            </h4>
-                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                              {vac.description}
-                            </p>
-                          </div>
-
-                          <div>
-                            <h4 className="font-bold uppercase tracking-wider text-[10px] text-slate-400 dark:text-slate-500 mb-1.5">
-                              Competencias Evaluadas por el Modelo
-                            </h4>
-                            <div className="flex flex-wrap gap-1.5">
-                              {vac.requiredSkills.map((skill) => (
-                                <span
-                                  key={skill}
-                                  className="text-[11px] font-medium bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/60 px-2 py-0.5 rounded"
-                                >
-                                  ✓ {skill}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {vac.requirements && vac.requirements.length > 0 && (
-                            <div>
-                              <h4 className="font-bold uppercase tracking-wider text-[10px] text-slate-400 dark:text-slate-500 mb-1">
-                                Requisitos Mínimos
-                              </h4>
-                              <ul className="text-slate-600 dark:text-slate-300 space-y-1 list-disc list-inside">
-                                {vac.requirements.map((req, rIdx) => (
-                                  <li key={rIdx}>{req}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Paper Footer Action */}
-                        <div className="pt-3.5 border-t border-[#E5DEC9] dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-[#0B5D46] dark:text-emerald-400 shrink-0" />
-                            <span>Evaluación sin sesgos demográficos</span>
-                          </div>
-
-                          <Button
-                            onClick={() => onSelectVacancy(vac)}
-                            size="sm"
-                            variant="primary"
-                            rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
-                          >
-                            Postularme al cargo
-                          </Button>
-                        </div>
-                      </div>
+                    <div className="pt-1 border-t border-[#D5C3A5]/70 dark:border-[#3D3024]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D5634] dark:text-[#C4A482] block mb-1">
+                        Resumen de Responsabilidades
+                      </span>
+                      <p className="text-xs text-[#4A3520] dark:text-[#D5C3AA] line-clamp-3 leading-relaxed">
+                        {vac.description}
+                      </p>
                     </div>
                   </div>
+
+                  <div className="pt-2 flex items-center justify-between gap-2 text-xs">
+                    <span className="text-[11px] text-[#7D5634] dark:text-[#BAA085] font-medium inline-flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>Expediente cerrado</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#E2D2B8] group-hover:bg-[#0B5D46] group-hover:text-white dark:bg-[#2F251D] dark:group-hover:bg-[#C8FF45] dark:group-hover:text-[#090A0C] text-[#3A2818] dark:text-[#F0DFC8] border border-[#C4AE8D] dark:border-[#4A3B2E] font-bold text-xs transition-colors">
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>Abrir convocatoria</span>
+                    </span>
+                  </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </main>
+
+      {/* Modal con el expediente completo de la convocatoria y botón de postularse abajo */}
+      <Modal
+        isOpen={Boolean(selectedModalVacancy)}
+        onClose={() => setSelectedModalVacancy(null)}
+        title={selectedModalVacancy?.title || 'Convocatoria'}
+        subtitle={
+          selectedModalVacancy
+            ? `${selectedModalVacancy.empresaNombre || 'PlataformaML Corporativo'} · ${selectedModalVacancy.department} · EXP-${(selectedModalVacancy.id || '01').slice(0, 6).toUpperCase()}`
+            : undefined
+        }
+        maxWidth="2xl"
+        variant="manila"
+      >
+        {selectedModalVacancy && (
+          <div className="space-y-5">
+            {/* Metadatos del cargo */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
+                <Building2 className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
+                {selectedModalVacancy.empresaNombre || 'PlataformaML Corporativo'}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
+                <MapPin className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
+                {selectedModalVacancy.location}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
+                <Briefcase className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
+                {selectedModalVacancy.workMode} · {selectedModalVacancy.type}
+              </span>
+              {selectedModalVacancy.openings && (
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/12 text-emerald-800 dark:text-[#C8FF45] border border-emerald-500/30 font-mono-tabular font-bold">
+                  {selectedModalVacancy.openings} {selectedModalVacancy.openings === 1 ? 'plaza' : 'plazas'}
+                </span>
+              )}
+              {typeof selectedModalVacancy.minExperienceYears === 'number' && selectedModalVacancy.minExperienceYears > 0 && (
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/12 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-semibold">
+                  Mín. {selectedModalVacancy.minExperienceYears} {selectedModalVacancy.minExperienceYears === 1 ? 'año' : 'años'} exp.
+                </span>
+              )}
+            </div>
+
+            {/* Hoja completa del expediente */}
+            <div className="p-5 rounded-xl bg-white dark:bg-slate-900/90 border border-[#DED7C8] dark:border-slate-800 space-y-4 text-xs sm:text-sm leading-relaxed">
+              <div>
+                <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
+                  Resumen de Responsabilidades y Descripción
+                </h4>
+                <p className="text-slate-700 dark:text-slate-200 whitespace-pre-line leading-relaxed">
+                  {selectedModalVacancy.description}
+                </p>
+              </div>
+
+              {selectedModalVacancy.requiredSkills && selectedModalVacancy.requiredSkills.length > 0 && (
+                <div className="pt-3 border-t border-[#E5DEC9] dark:border-slate-800">
+                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-2">
+                    Competencias Evaluadas por el Modelo IA
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedModalVacancy.requiredSkills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/70 px-2.5 py-1 rounded-lg"
+                      >
+                        ✓ {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedModalVacancy.requirements && selectedModalVacancy.requirements.length > 0 && (
+                <div className="pt-3 border-t border-[#E5DEC9] dark:border-slate-800">
+                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
+                    Requisitos Mínimos
+                  </h4>
+                  <ul className="text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside text-xs sm:text-sm">
+                    {selectedModalVacancy.requirements.map((req, rIdx) => (
+                      <li key={rIdx}>{req}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Pie del modal con botón prominente de Postularse */}
+            <div className="pt-3 border-t border-[#C8B496]/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
+                <span>Evaluación ética sin sesgos demográficos</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedModalVacancy(null)}
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  rightIcon={<ChevronRight className="w-4 h-4" />}
+                  onClick={() => {
+                    const target = selectedModalVacancy;
+                    setSelectedModalVacancy(null);
+                    onSelectVacancy(target);
+                  }}
+                >
+                  Postularme al cargo
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Footer />
     </div>

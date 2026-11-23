@@ -168,20 +168,14 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
       if (cleanEmail) {
         localStorage.setItem(`nexo_photo_by_email_${cleanEmail}`, newPhoto);
       }
-      if (!USE_MOCK && tempPhotoFile) {
-        const token = localStorage.getItem('nexo_auth_token') || '';
-        if (token && !token.startsWith('mock-') && !token.startsWith('local-')) {
-          const formData = new FormData();
-          formData.append('photo', tempPhotoFile);
-          api.put('/candidates/me/photo', formData).catch(() => {});
-        }
-      }
-      showToast('¡Foto actualizada!', 'Tu foto de perfil se ha guardado correctamente.', 'success');
+      candidatesService.updateProfile({ photoUrl: newPhoto } as any, cleanEmail || user?.email).catch(() => {});
+      showToast('¡Foto actualizada!', 'Tu foto de perfil se guardó en tu cuenta para todos tus dispositivos.', 'success');
     } else {
       localStorage.removeItem(`nexo_user_photo_${user?.id || 'cand'}`);
       if (cleanEmail) {
         localStorage.removeItem(`nexo_photo_by_email_${cleanEmail}`);
       }
+      candidatesService.updateProfile({ photoUrl: null } as any, cleanEmail || user?.email).catch(() => {});
       showToast('Foto eliminada', 'Se ha restablecido la foto de perfil.', 'info');
     }
     setTempPhotoFile(null);
@@ -340,10 +334,20 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     showToast('Subiendo y analizando CV...', `Procesando ${file.name} con IA...`, 'info');
 
     try {
-      await candidatesService.uploadCVDocument(file);
+      const uploadRes = await candidatesService.uploadCVDocument(file);
+      const backendExtracted = uploadRes?.extracted;
       const candidateFullName =
         user?.name || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Candidato';
-      const parsedData = await parseAndAnalyzeCV(file, file.name, candidateFullName);
+      const parsedData = backendExtracted
+        ? {
+            title: backendExtracted.title || '',
+            bio: backendExtracted.bio || '',
+            skills: Array.isArray(backendExtracted.skills) ? backendExtracted.skills : [],
+            education: Array.isArray(backendExtracted.education) ? backendExtracted.education : [],
+            experience: Array.isArray(backendExtracted.experience) ? backendExtracted.experience : [],
+            location: backendExtracted.location || '',
+          }
+        : await parseAndAnalyzeCV(file, file.name, candidateFullName);
 
       let finalLocation = parsedData.location || editLocation.trim() || profile?.location || '';
       if (!finalLocation) {
@@ -363,7 +367,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
           education: parsedData.education,
           experience: parsedData.experience,
           location: finalLocation,
-          cvFileName: file.name,
+          cvFileName: uploadRes?.filename || file.name,
         },
         editEmail.trim() || user?.email,
       );
@@ -372,12 +376,12 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
       const now = new Date();
       setLastReanalysisTime(`Hoy, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
       showToast(
-        '¡CV Subido con Éxito!',
-        `Se guardó ${file.name} (PDF/DOC) y se actualizaron tus competencias y ubicación.`,
+        '¡CV Subido y Analizado!',
+        `Se leyó el contenido real de ${file.name} y se guardó en tu perfil en la nube.`,
         'success',
       );
-    } catch {
-      showToast('Error al subir CV', 'No se pudo procesar el archivo. Intenta nuevamente.', 'error');
+    } catch (err: any) {
+      showToast('Error al subir CV', err?.message || 'No se pudo procesar el archivo. Intenta nuevamente.', 'error');
     } finally {
       setIsUploadingDirectCV(false);
       e.target.value = '';
@@ -418,8 +422,8 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
   const handleConfirmCandidatePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pwdCode.trim().length < 6) {
-      showToast('Código incompleto', 'Ingresa el código de 6 dígitos.', 'error');
+    if (pwdCode.trim().length < 5) {
+      showToast('Código incompleto', 'Ingresa el código recibido (5 o 6 dígitos).', 'error');
       return;
     }
     if (newPassword.length < 6) {
@@ -550,6 +554,9 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
       setApplications(apps);
       setProfile(prof);
+      if (prof.photoUrl && (prof.photoUrl.startsWith('data:image/') || prof.photoUrl.startsWith('http'))) {
+        setProfilePhoto(prof.photoUrl);
+      }
       if (prof.email) setEditEmail(prof.email);
       if (prof.phone) {
         setEditPhone(prof.phone);
@@ -1961,41 +1968,93 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                           </div>
                         </div>
 
-                        {/* Mini Rating / Affinity Stack (Frosted Glass Pill) */}
-                        <div className="flex items-center gap-3 bg-slate-50 dark:bg-[#F1F2EC]/[0.065] dark:backdrop-blur-[2px] p-3 rounded-2xl border border-slate-200/80 dark:border-[#F1F2EC]/18 shadow-2xs dark:shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(241,242,236,0.18)]">
-                          {profile.skills.length > 0 ? (
-                            <>
-                              <div className="flex -space-x-2 overflow-hidden">
-                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-emerald-500 text-white font-black text-[10px] flex items-center justify-center">
-                                  TF
-                                </div>
-                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-teal-500 text-white font-black text-[10px] flex items-center justify-center">
-                                  RF
-                                </div>
-                                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-[#090A0C] bg-amber-500 text-slate-950 font-black text-[10px] flex items-center justify-center">
-                                  ML
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-xs font-black text-slate-900 dark:text-[#F1F2EC]">
-                                  94% Afinidad Media
-                                </div>
-                                <div className="text-[10px] text-emerald-700 dark:text-[#C8FF45] font-semibold">
-                                  (4.9 / 5.0 Concordancia)
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div>
-                              <div className="text-xs font-bold text-slate-700 dark:text-[#F1F2EC]">
-                                Pendiente de CV
-                              </div>
-                              <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                                Sube tu CV para evaluar afinidad
-                              </div>
+                        {/* Mini Rating / Affinity Stack (Frosted Glass Pill con indicador visual real) */}
+                        {(() => {
+                          const scoredApps = applications.filter(
+                            (a) => typeof a.mlScore === 'number' && a.mlScore > 0,
+                          );
+                          const realAvgAffinity =
+                            scoredApps.length > 0
+                              ? Math.round(
+                                  scoredApps.reduce((acc, a) => acc + (a.mlScore || 0), 0) /
+                                    scoredApps.length,
+                                )
+                              : null;
+                          const dashCirc = 2 * Math.PI * 16;
+                          const dashVal = realAvgAffinity !== null ? (realAvgAffinity / 100) * dashCirc : 0;
+
+                          return (
+                            <div className="flex items-center gap-3 bg-slate-50 dark:bg-[#F1F2EC]/[0.065] dark:backdrop-blur-[2px] px-3.5 py-2.5 rounded-2xl border border-slate-200/80 dark:border-[#F1F2EC]/18 shadow-2xs dark:shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(241,242,236,0.18)]">
+                              {realAvgAffinity !== null ? (
+                                <>
+                                  <div className="relative w-11 h-11 shrink-0 flex items-center justify-center">
+                                    <svg className="w-11 h-11 -rotate-90" viewBox="0 0 40 40">
+                                      <circle
+                                        cx="20"
+                                        cy="20"
+                                        r="16"
+                                        className="stroke-slate-200 dark:stroke-white/10"
+                                        strokeWidth="4"
+                                        fill="transparent"
+                                      />
+                                      <circle
+                                        cx="20"
+                                        cy="20"
+                                        r="16"
+                                        stroke="currentColor"
+                                        className="text-emerald-600 dark:text-[#C8FF45]"
+                                        strokeWidth="4"
+                                        strokeLinecap="round"
+                                        fill="transparent"
+                                        strokeDasharray={`${dashVal} ${dashCirc}`}
+                                      />
+                                    </svg>
+                                    <span className="absolute text-[10px] font-mono-tabular font-black text-slate-900 dark:text-[#F1F2EC]">
+                                      {realAvgAffinity}%
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-black text-slate-900 dark:text-[#F1F2EC]">
+                                      {realAvgAffinity}% Afinidad Media
+                                    </div>
+                                    <div className="text-[10px] text-emerald-700 dark:text-[#C8FF45] font-semibold">
+                                      Basado en {scoredApps.length}{' '}
+                                      {scoredApps.length === 1 ? 'postulación evaluada' : 'postulaciones evaluadas'}
+                                    </div>
+                                  </div>
+                                </>
+                              ) : profile.skills.length > 0 ? (
+                                <>
+                                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 dark:bg-[#C8FF45]/15 border border-emerald-500/30 dark:border-[#C8FF45]/35 flex items-center justify-center shrink-0">
+                                    <Sparkles className="w-5 h-5 text-emerald-700 dark:text-[#C8FF45]" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-black text-slate-900 dark:text-[#F1F2EC]">
+                                      Perfil listo para evaluación IA
+                                    </div>
+                                    <div className="text-[10px] text-emerald-700 dark:text-[#C8FF45] font-semibold">
+                                      {profile.skills.length} competencias listas · Postúlate para ver tu afinidad
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                    <FileUp className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-700 dark:text-[#F1F2EC]">
+                                      Pendiente de CV
+                                    </div>
+                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                      Sube tu CV para evaluar afinidad
+                                    </div>
+                                  </div>
+                                </>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
                     </div>
 

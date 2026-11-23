@@ -576,18 +576,14 @@ export async function enviarCodigoSeguridadClave(datos: {
       throw new HttpError(400, 'Esta cuenta no tiene un número de Telegram vinculado.');
     }
 
+    const { telegramService } = await import('./telegram.service');
     let enviadoPorTelegram = false;
     try {
-      const { telegramService } = await import('./telegram.service');
-      const sesionEmpresa = await prisma.registroAuditoria.findFirst({
-        where: { accion: 'EMPRESA_TELEGRAM_SESION' },
-        select: { empresaId: true },
-        orderBy: { creadoEn: 'desc' },
-      });
       const resTlg = await telegramService.sendDirect({
-        empresaId: sesionEmpresa?.empresaId ?? null,
+        empresaId: usuario.empresaId ?? null,
         usuarioId: usuario.id,
         toFallback: destinoTelefono,
+        respaldoGlobal: true,
         message: `🔐 PlataformaML · Código de seguridad\n\nTu código de 6 dígitos para cambiar o recuperar tu contraseña es:\n\n${codigo}\n\nVálido por 15 minutos.`,
       });
       enviadoPorTelegram = resTlg.success;
@@ -595,32 +591,42 @@ export async function enviarCodigoSeguridadClave(datos: {
       enviadoPorTelegram = false;
     }
 
-    // Si aún no hay sesión de Telegram corporativa activa, enviamos respaldo al correo si existe
-    if (!enviadoPorTelegram && destinoCorreo && destinoCorreo.includes('@')) {
-      await emailService
-        .sendDirect({
-          to: destinoCorreo,
-          subject: `${codigo} es tu código de seguridad (Respaldo Telegram) — PlataformaML`,
-          text: `Hola ${usuario.nombre},\n\nSolicitaste un código por Telegram (${destinoTelefono}) para cambiar o recuperar tu contraseña:\n\n${codigo}\n\nVálido por 15 minutos.`,
-          senderName: 'PlataformaML · Seguridad',
-        })
-        .catch(() => {});
+    if (enviadoPorTelegram) {
+      return {
+        mensaje: `Enviamos el código de 6 dígitos a tu Telegram (${destinoTelefono}).`,
+        canal: 'TELEGRAM',
+        destino: destinoTelefono,
+      };
     }
 
-    return {
-      mensaje: enviadoPorTelegram
-        ? `Enviamos el código de 6 dígitos a tu Telegram (${destinoTelefono}).`
-        : `Código de verificación generado para tu número de Telegram (${destinoTelefono})${destinoCorreo ? ' y enviado con copia de respaldo a tu correo' : ''}.`,
-      canal: 'TELEGRAM',
-      destino: destinoTelefono,
-    };
+    // Telegram aún no está conectado en la plataforma: se usa el correo como respaldo y se avisa con claridad
+    if (destinoCorreo && destinoCorreo.includes('@')) {
+      const resCorreo = await emailService.sendDirect({
+        to: destinoCorreo,
+        subject: `${codigo} es tu código de seguridad — PlataformaML`,
+        text: `Hola ${usuario.nombre},\n\nSolicitaste un código por Telegram (${destinoTelefono}), pero Telegram aún no está conectado en la plataforma. Tu código de 6 dígitos es:\n\n${codigo}\n\nVálido por 15 minutos.`,
+        senderName: 'PlataformaML · Seguridad',
+      });
+      if (resCorreo.success) {
+        return {
+          mensaje: `Telegram aún no está conectado en la plataforma, así que enviamos el código a tu correo (${destinoCorreo}).`,
+          canal: 'CORREO',
+          destino: destinoCorreo,
+        };
+      }
+    }
+
+    throw new HttpError(
+      503,
+      'No pudimos enviar el código: Telegram aún no está conectado en la plataforma y no hay un correo de respaldo disponible.',
+    );
   }
 
   if (!destinoCorreo || !destinoCorreo.includes('@')) {
     throw new HttpError(400, 'No hay un correo registrado. Solicita el código por Telegram.');
   }
 
-  await emailService.sendDirect({
+  const resCorreoFinal = await emailService.sendDirect({
     to: destinoCorreo,
     subject: `${codigo} es tu código para cambiar o recuperar tu contraseña — PlataformaML`,
     text: `Hola ${usuario.nombre},\n\nTu código de 6 dígitos para cambiar o restablecer tu contraseña en PlataformaML es:\n\n${codigo}\n\nEste código expira en 15 minutos.`,
@@ -637,6 +643,13 @@ export async function enviarCodigoSeguridadClave(datos: {
     `,
     senderName: 'PlataformaML · Seguridad',
   });
+
+  if (!resCorreoFinal.success) {
+    throw new HttpError(
+      502,
+      `No pudimos enviar el correo con el código (${resCorreoFinal.error || 'error del servicio de correo'}). Inténtalo de nuevo en unos minutos.`,
+    );
+  }
 
   return {
     mensaje: `Enviamos un código de 6 dígitos a tu correo (${destinoCorreo}).`,
@@ -718,7 +731,8 @@ export async function verificarCodigoYActualizarClave(datos: {
     },
   });
 
-  return { mensaje: 'Contraseña actualizada correctamente.' };
+  const token = firmarToken(usuario.id);
+  return { mensaje: 'Contraseña actualizada correctamente.', token } as { mensaje: string; token?: string };
 }
 
 

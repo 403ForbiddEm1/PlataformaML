@@ -173,8 +173,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       return;
     }
 
-    if (recoverCode.trim().length < 6) {
-      showToast('Código incompleto', 'Ingresa el código de 6 dígitos que recibiste.', 'error');
+    if (recoverCode.trim().length < 5) {
+      showToast('Código incompleto', 'Ingresa el código de 5 o 6 dígitos que recibiste.', 'error');
       return;
     }
     if (recoverNewPassword.length < 6) {

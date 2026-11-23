@@ -32,10 +32,11 @@ const MainApp: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token')?.trim();
     if (!token) return null;
+    const action = (params.get('action') || '').toLowerCase();
     const path = window.location.pathname.toLowerCase();
-    if (path.includes('verify-email')) return { type: 'verify-email', token };
-    if (path.includes('reset-password')) return { type: 'reset-password', token };
-    if (path.includes('accept-invitation')) return { type: 'accept-invitation', token };
+    if (action === 'verify-email' || path.includes('verify-email')) return { type: 'verify-email', token };
+    if (action === 'reset-password' || path.includes('reset-password')) return { type: 'reset-password', token };
+    if (action === 'accept-invitation' || path.includes('accept-invitation')) return { type: 'accept-invitation', token };
     return null;
   });
   const [loaderState, setLoaderState] = useState<LoaderOverlayState>({

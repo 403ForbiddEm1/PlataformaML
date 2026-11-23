@@ -444,8 +444,20 @@ export const authService = {
     empresaNombre: string;
   }): Promise<User> {
     const emailNorm = data.email.trim().toLowerCase();
-    const newUser: User = {
-      id: `usr-hr-${Date.now().toString().slice(-4)}`,
+
+    // Solo enviamos la invitación real por correo en el backend.
+    // El reclutador NO se agrega al equipo ni a las credenciales hasta que abra el enlace y acepte su invitación.
+    if (!USE_MOCK) {
+      await api.post<any>('/company/members/invite', {
+        correo: emailNorm,
+        rol: 'RRHH',
+        nombre: data.name.trim(),
+        telefono: data.phone || undefined,
+      });
+    }
+
+    return {
+      id: `inv-${Date.now()}`,
       email: emailNorm,
       name: data.name.trim(),
       role: 'rrhh',
@@ -453,62 +465,10 @@ export const authService = {
       empresaNombre: data.empresaNombre,
       companyId: data.empresaId,
       companyName: data.empresaNombre,
-      phone: data.phone || '+1 (809) 555-0200',
-      avatar: data.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2),
+      phone: data.phone || undefined,
+      pendiente: true,
       createdAt: new Date().toISOString(),
     };
-
-    // Guardar en mockStore
-    const users = mockStore.getUsers();
-    users.unshift(newUser);
-    mockStore.saveUsers(users);
-
-    // Guardar en lista de miembros de la empresa en localStorage
-    try {
-      const storageKey = `nexo_company_members_${data.empresaId}`;
-      const existingStr = localStorage.getItem(storageKey);
-      const members: User[] = existingStr ? JSON.parse(existingStr) : [];
-      const filtered = members.filter((m) => m.email.toLowerCase() !== emailNorm);
-      filtered.unshift(newUser);
-      localStorage.setItem(storageKey, JSON.stringify(filtered));
-    } catch {}
-
-    // Guardar credenciales para acceso directo en login
-    try {
-      const credsKey = 'nexo_local_credentials';
-      const credsStr = localStorage.getItem(credsKey);
-      const creds: Record<string, { password?: string; user: User }> = credsStr ? JSON.parse(credsStr) : {};
-      creds[emailNorm] = {
-        password: data.password || 'Password123!',
-        user: newUser,
-      };
-      localStorage.setItem(credsKey, JSON.stringify(creds));
-    } catch {}
-
-    if (!USE_MOCK) {
-      try {
-        const res = await api.post<any>('/company/members/invite', {
-          correo: emailNorm,
-          rol: 'RRHH',
-          nombre: data.name.trim(),
-          telefono: data.phone || undefined,
-          password: data.password || undefined,
-        });
-        if (res?.data?.id) {
-          newUser.id = res.data.id;
-          newUser.pendiente = Boolean(res.data.pendiente);
-        }
-      } catch (e) {
-        console.warn('[INVITE_HR] Aviso al registrar en backend:', e);
-      }
-    }
-
-    return newUser;
   },
 
   getLocalCompanyMembers(empresaId: string): User[] {
@@ -719,14 +679,17 @@ export const authService = {
     email?: string;
     phone?: string;
     userId?: string;
-  }): Promise<{ mensaje: string }> {
-    const response = await api.post<{ mensaje: string }>('/auth/password-code/verify', {
+  }): Promise<{ mensaje: string; token?: string }> {
+    const response = await api.post<{ mensaje: string; token?: string }>('/auth/password-code/verify', {
       codigo: payload.code.trim(),
       nuevaClave: payload.newPassword,
       correo: payload.email?.trim().toLowerCase() || undefined,
       telefono: payload.phone?.trim() || undefined,
       usuarioId: payload.userId || undefined,
     });
+    if (response.data?.token) {
+      localStorage.setItem('nexo_auth_token', response.data.token);
+    }
     return response.data;
   },
 };

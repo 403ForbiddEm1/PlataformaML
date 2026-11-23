@@ -8,8 +8,10 @@ export interface TokenPayload {
 }
 
 export function firmarToken(usuarioId: string): string {
+  const expiresIn =
+    !env.JWT_EXPIRES_IN || env.JWT_EXPIRES_IN === '1h' ? '30d' : env.JWT_EXPIRES_IN;
   return jwt.sign({ sub: usuarioId }, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
+    expiresIn: expiresIn as SignOptions['expiresIn'],
   });
 }
 

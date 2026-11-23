@@ -70,70 +70,25 @@ export async function parseAndAnalyzeCV(
     }
   }
 
-  // Si por codificación binaria de PDF no se detectaron suficientes, suministrar el stack completo para desarrollador web
-  const defaultWebDevSkills = [
-    'JavaScript',
-    'TypeScript',
-    'React',
-    'Node.js',
-    'HTML5 & CSS3',
-    'Tailwind CSS',
-    'PostgreSQL',
-    'REST APIs',
-    'Git & Control de Versiones',
-    'Python',
-    'Arquitectura de Software',
-    'Docker Básico',
-  ];
+  const finalSkills = Array.from(new Set(matchedSkills));
 
-  const finalSkills =
-    matchedSkills.length >= 3
-      ? Array.from(new Set(matchedSkills))
-      : defaultWebDevSkills;
-
-  // Detección de Título Profesional
-  let title = 'Desarrollador Web Full Stack';
-  if (/analista|datos|bi\b/i.test(normalizedCorpus) && !/web|frontend/i.test(normalizedCorpus)) {
+  // Detección real sin inventar formación ni experiencia laboral ficticia
+  let title = '';
+  if (/dise[ñn]ador.*web|ui\/ux|figma/i.test(normalizedCorpus)) {
+    title = 'Diseñador(a) Web / UI-UX';
+  } else if (/analista|datos|bi\b/i.test(normalizedCorpus) && !/web|frontend/i.test(normalizedCorpus)) {
     title = 'Analista de Datos & Especialista BI';
-  } else if (/frontend|diseño/i.test(normalizedCorpus) && !/backend/i.test(normalizedCorpus)) {
-    title = 'Desarrollador Frontend & UI/UX';
-  } else if (/backend|servidor/i.test(normalizedCorpus) && !/frontend/i.test(normalizedCorpus)) {
-    title = 'Desarrollador Backend Cloud';
+  } else if (/frontend/i.test(normalizedCorpus) && !/backend/i.test(normalizedCorpus)) {
+    title = 'Desarrollador Frontend';
+  } else if (/backend/i.test(normalizedCorpus) && !/frontend/i.test(normalizedCorpus)) {
+    title = 'Desarrollador Backend';
+  } else if (/full\s*stack/i.test(normalizedCorpus)) {
+    title = 'Desarrollador Full Stack';
   }
 
-  // Detección y estructuración de Formación Académica
-  const education = [
-    {
-      institution: 'Universidad Nacional Experimental / Politécnico',
-      degree: 'Ingeniería en Sistemas / Computación e Informática',
-      graduationYear: '2023',
-    },
-    {
-      institution: 'Academia de Tecnologías Web & Cloud',
-      degree: 'Certificación Profesional en Desarrollo Web Full Stack & Arquitecturas Limpias',
-      graduationYear: '2024',
-    },
-  ];
-
-  // Detección y estructuración de Experiencia Laboral
-  const experience = [
-    {
-      company: 'Soluciones Digitales & Tecnología Web',
-      role: title,
-      period: '2022 - Presente',
-      description:
-        'Diseño e implementación de aplicaciones web modernas y componentes modulares. Integración de servicios API RESTful, consultas optimizadas en PostgreSQL y aseguramiento de buenas prácticas de código.',
-    },
-    {
-      company: 'Servicios de Consultoría & Desarrollo de Software',
-      role: 'Desarrollador de Software Web Junior',
-      period: '2020 - 2022',
-      description:
-        'Construcción de interfaces interactivas con JavaScript y maquetación responsiva con Tailwind CSS/CSS3. Soporte en lógica de backend y control de versiones con Git.',
-    },
-  ];
-
-  const bio = `Profesional en ${title} con sólida formación en ingeniería y pasión por el desarrollo de aplicaciones web de alto rendimiento. Especializado en ecosistemas JavaScript/TypeScript, diseño de interfaces responsivas y consumo de modelos de Inteligencia Artificial.`;
+  const education: ExtractedCVData['education'] = [];
+  const experience: ExtractedCVData['experience'] = [];
+  const bio = '';
 
   // Detección de Ubicación dentro del texto del CV
   let detectedLocation = '';

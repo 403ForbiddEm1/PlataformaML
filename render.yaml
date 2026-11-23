@@ -31,7 +31,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 1h
+        value: 30d
       - key: FRONTEND_URL
         value: https://plataforma-ml.vercel.app
       - key: ML_SERVICE_URL

@@ -236,7 +236,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
     }
     setIsRegisteringHR(true);
     try {
-      const newMember = await authService.registerHRUser({
+      await authService.registerHRUser({
         name: hrName.trim(),
         email: hrEmail.trim(),
         password: hrPassword.trim() || 'Password123!',
@@ -245,10 +245,9 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
         empresaNombre: currentEmpresaNombre,
       });
 
-      setTeamMembers((prev) => [newMember, ...prev]);
       showToast(
         'Invitación de RRHH enviada por correo',
-        `Se envió un correo de confirmación a ${hrEmail}. El reclutador debe confirmar su registro desde ese enlace. Las notificaciones y mensajes saldrán del correo y Telegram de la empresa.`,
+        `Se envió un correo de confirmación a ${hrEmail}. Aparecerá en tu Equipo de Trabajo en cuanto acepte su invitación.`,
         'success',
       );
       setIsNewHROpen(false);

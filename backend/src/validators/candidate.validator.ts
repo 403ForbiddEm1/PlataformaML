@@ -5,6 +5,7 @@ export const updateCandidateProfileSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   phone: z.string().optional(),
+  photoUrl: z.string().nullable().optional(),
   title: z.string().optional(),
   bio: z.string().optional(),
   location: z.string().optional(),
@@ -15,8 +16,8 @@ export const updateCandidateProfileSchema = z.object({
   education: z
     .array(
       z.object({
-        institution: z.string().min(1, 'Institución obligatoria'),
-        degree: z.string().min(1, 'Título obligatorio'),
+        institution: z.string().default('—'),
+        degree: z.string().default('—'),
         graduationYear: z.union([z.string(), z.number()]).optional(),
       }),
     )
@@ -24,8 +25,8 @@ export const updateCandidateProfileSchema = z.object({
   experience: z
     .array(
       z.object({
-        company: z.string().min(1, 'Empresa obligatoria'),
-        role: z.string().min(1, 'Cargo obligatorio'),
+        company: z.string().default('—'),
+        role: z.string().default('—'),
         period: z.string().optional(),
         description: z.string().optional(),
       }),

@@ -68,6 +68,8 @@ export const vacanciesService = {
           ? (response as any).data.data
           : [];
         apiList = raw.map(normalizeVacancy);
+        persistAllLocalVacancies(apiList);
+        return apiList;
       } catch (err) {
         console.warn('Backend /vacancies GET failed or offline, using local vacancies:', err);
       }
@@ -128,35 +130,31 @@ export const vacanciesService = {
     });
 
     if (!USE_MOCK) {
-      try {
-        const backendPayload = {
-          title: data.title,
-          department: data.department || 'General',
-          location: data.location || 'Remoto',
-          workMode: data.workMode || 'Híbrido',
-          type: data.type || 'Tiempo completo',
-          description: data.description,
-          requirements: data.requirements || [],
-          requiredSkills: data.requiredSkills || [],
-          minExperienceYears: data.minExperienceYears ?? 0,
-          openings: data.openings ?? 1,
-          status: data.status || 'Abierta',
-        };
+      const backendPayload = {
+        title: data.title,
+        department: data.department || 'General',
+        location: data.location || 'Remoto',
+        workMode: data.workMode || 'Híbrido',
+        type: data.type || 'Tiempo completo',
+        description: data.description,
+        requirements: data.requirements || [],
+        requiredSkills: data.requiredSkills || [],
+        minExperienceYears: data.minExperienceYears ?? 0,
+        openings: data.openings ?? 1,
+        status: data.status || 'Abierta',
+      };
 
-        const response = await api.post<any>('/vacancies', backendPayload);
-        const created = (response.data as any)?.data || response.data;
-        if (created && created.id) {
-          const merged = normalizeVacancy({
-            ...newVacancy,
-            ...created,
-            empresaId: created.companyId || created.empresaId || companyId,
-            empresaNombre: created.companyName || created.empresaNombre || companyName,
-          });
-          persistLocalVacancy(merged);
-          return merged;
-        }
-      } catch (apiErr) {
-        console.warn('Backend /vacancies POST failed, creating resiliently in local storage:', apiErr);
+      const response = await api.post<any>('/vacancies', backendPayload);
+      const created = (response.data as any)?.data || response.data;
+      if (created && created.id) {
+        const merged = normalizeVacancy({
+          ...newVacancy,
+          ...created,
+          empresaId: created.companyId || created.empresaId || companyId,
+          empresaNombre: created.companyName || created.empresaNombre || companyName,
+        });
+        persistLocalVacancy(merged);
+        return merged;
       }
     }
 
