@@ -709,17 +709,23 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
     const formattedTime = `Hoy, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     setLastReanalysisTime(formattedTime);
 
-    // Re-analizar CV en el servidor real (sin parser local del navegador)
+    // Re-analizar CV en el servidor real con Gemini 3.5 Flash
     try {
       const targetFileName = selectedCVFile?.name || uploadedCVName || profile?.cvFileName || 'Curriculum_Vitae.pdf';
       if (selectedCVFile) {
         await candidatesService.uploadCVDocument(selectedCVFile);
+      } else {
+        await candidatesService.reanalyzeCV();
       }
       const freshProfile = await candidatesService.getProfile(editEmail.trim() || user?.email);
       setProfile(freshProfile);
       setUploadedCVName(freshProfile.cvFileName || targetFileName);
-    } catch {
-      // Mantiene el perfil actual si falla la red
+    } catch (err: any) {
+      showToast(
+        'No se pudo re-analizar',
+        err?.message || 'Vuelve a seleccionar tu PDF/DOCX en "Subir / Actualizar CV" para analizarlo con Gemini.',
+        'error'
+      );
     }
 
     setIsReanalyzing(false);
@@ -2084,21 +2090,53 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                       </div>
 
                       <div className="pt-1">
-                        {profile.skills.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {profile.skills.map((skill) => (
-                              <span
-                                key={skill}
-                                className="px-3.5 py-1.5 bg-slate-50 dark:bg-[#F1F2EC]/[0.06] text-slate-800 dark:text-[#F1F2EC] border border-slate-200 dark:border-[#F1F2EC]/18 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:border-emerald-400 dark:hover:border-[#C8FF45]/60 dark:hover:bg-[#F1F2EC]/[0.09] transition-all shadow-2xs dark:shadow-[0_6px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(241,242,236,0.16)]"
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
+                        {profile.skills.length > 0 ? (() => {
+                          const SOFT_SKILL_REGEX = /(trabajo\s+en\s+equipo|liderazgo|comunicaci[oó]n|resoluci[oó]n\s+de\s+problemas|proactiv|adaptabilidad|creatividad|empat[ií]a|responsabilidad|organizaci[oó]n|gesti[oó]n\s+del\s+tiempo|pensamiento\s+cr[ií]tico|aprendizaje\s+(r[aá]pido|continuo)|atenci[oó]n\s+al\s+(detalle|cliente)|negociaci[oó]n|colaboraci[oó]n|flexibilidad|puntualidad|iniciativa|autonom[ií]a|inteligencia\s+emocional|trabajo\s+bajo\s+presi[oó]n|orientaci[oó]n\s+a\s+resultados|teamwork|leadership|communication|problem\s+solving)/i;
+                          const softSkills = profile.skills.filter((s) => SOFT_SKILL_REGEX.test(s));
+                          const technicalSkills = profile.skills.filter((s) => !SOFT_SKILL_REGEX.test(s));
+                          return (
+                            <div className="space-y-4">
+                              {technicalSkills.length > 0 && (
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-[#C8FF45] block">
+                                    Habilidades Técnicas ({technicalSkills.length})
+                                  </span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {technicalSkills.map((skill) => (
+                                      <span
+                                        key={skill}
+                                        className="px-3.5 py-1.5 bg-slate-50 dark:bg-[#F1F2EC]/[0.06] text-slate-800 dark:text-[#F1F2EC] border border-slate-200 dark:border-[#F1F2EC]/18 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:border-emerald-400 dark:hover:border-[#C8FF45]/60 transition-all shadow-2xs"
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {softSkills.length > 0 && (
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
+                                    Habilidades Blandas ({softSkills.length})
+                                  </span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {softSkills.map((skill) => (
+                                      <span
+                                        key={skill}
+                                        className="px-3.5 py-1.5 bg-amber-50/70 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : (
                           <div className="p-4 rounded-xl border border-dashed border-[#c8b193]/70 dark:border-[#F1F2EC]/16 bg-[#fbf9f5] dark:bg-[#F1F2EC]/[0.035] text-center text-xs text-slate-500 dark:text-[#777873]">
-                            Aún no has adjuntado tu CV. Sube tu currículum para que la IA extraiga tus habilidades técnicas automáticamente.
+                            Aún no has adjuntado tu CV. Sube tu currículum para que la IA extraiga tus habilidades técnicas y blandas automáticamente.
                           </div>
                         )}
                       </div>

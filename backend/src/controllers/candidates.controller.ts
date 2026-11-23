@@ -7,7 +7,7 @@ import { CandidateProfileResponse } from '../types';
 import { TipoDocumento, Rol } from '@prisma/client';
 import { storageService } from '../services/storage.service';
 import { auditService } from '../services/audit.service';
-import { analizarArchivoCv } from '../services/cv-parser.service';
+import { analizarArchivoCv, analizarTextoCv } from '../services/cv-parser.service';
 
 export const candidatesController = {
   async getProfile(req: Request, res: Response, next: NextFunction) {
@@ -315,6 +315,110 @@ export const candidatesController = {
           id: nuevoDoc.id,
           filename: nuevoDoc.nombreArchivo,
           tipo: nuevoDoc.tipo,
+          extracted,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async reanalyzeCurrentCV(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new HttpError(401, 'No autenticado');
+
+      const perfil = await prisma.perfilCandidato.findUnique({
+        where: { usuarioId: userId },
+        include: {
+          documentos: {
+            where: { tipo: TipoDocumento.CURRICULO, vigente: true },
+            orderBy: { creadoEn: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      if (!perfil) throw new HttpError(404, 'Perfil de candidato no encontrado');
+
+      const docVigente = perfil.documentos[0];
+      const diskPath = docVigente?.rutaAlmacenamiento
+        ? path.join(process.cwd(), 'uploads', docVigente.rutaAlmacenamiento)
+        : null;
+
+      let extracted = null;
+      if (diskPath && fs.existsSync(diskPath)) {
+        extracted = await analizarArchivoCv(diskPath);
+      } else if (perfil.textoExtraido && perfil.textoExtraido.trim().length >= 20) {
+        extracted = await analizarTextoCv(perfil.textoExtraido);
+      } else {
+        throw new HttpError(400, 'Sube tu CV nuevamente (PDF o DOCX) para poder analizarlo con Gemini.');
+      }
+
+      let totalExpYears = 0;
+      const currentYear = new Date().getFullYear();
+      if (extracted.experience && extracted.experience.length > 0) {
+        for (const exp of extracted.experience) {
+          const years = exp.period?.match(/\d{4}/g);
+          const isPresent = /presente|actualidad|actual|hoy|present|current/i.test(exp.period || '');
+          if (years && years.length >= 2) {
+            totalExpYears += Math.max(1, parseInt(years[1]) - parseInt(years[0]));
+          } else if (years && years.length === 1 && isPresent) {
+            totalExpYears += Math.max(1, currentYear - parseInt(years[0]));
+          } else {
+            totalExpYears += 1;
+          }
+        }
+      }
+
+      await prisma.perfilCandidato.update({
+        where: { id: perfil.id },
+        data: {
+          titulo: extracted.title || null,
+          biografia: extracted.bio || null,
+          ...(extracted.location ? { ubicacion: extracted.location } : {}),
+          habilidades: extracted.skills || [],
+          textoExtraido: extracted.texto || perfil.textoExtraido || null,
+          aniosExperiencia: totalExpYears,
+          actualizadoEn: new Date(),
+        },
+      });
+
+      await prisma.educacionCandidato.deleteMany({ where: { perfilId: perfil.id } });
+      if (Array.isArray(extracted.education) && extracted.education.length > 0) {
+        await prisma.educacionCandidato.createMany({
+          data: extracted.education.map((e) => ({
+            perfilId: perfil.id,
+            institucion: e.institution || '—',
+            titulo: e.degree || '—',
+            anioGraduacion: e.graduationYear ? parseInt(String(e.graduationYear)) || null : null,
+          })),
+        });
+      }
+
+      await prisma.experienciaCandidato.deleteMany({ where: { perfilId: perfil.id } });
+      if (Array.isArray(extracted.experience) && extracted.experience.length > 0) {
+        await prisma.experienciaCandidato.createMany({
+          data: extracted.experience.map((x) => {
+            const years = x.period?.match(/\d{4}/g);
+            const anioInicio = years && years[0] ? parseInt(years[0]) : currentYear;
+            const anioFin = years && years[1] ? parseInt(years[1]) : null;
+            return {
+              perfilId: perfil.id,
+              empresa: x.company || '—',
+              cargo: x.role || '—',
+              anioInicio,
+              anioFin,
+              descripcion: x.description || null,
+            };
+          }),
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          extractor: extracted.extractor,
           extracted,
         },
       });

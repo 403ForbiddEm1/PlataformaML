@@ -204,4 +204,12 @@ export const candidatesService = {
     }
     return { filename: file.name, extracted: null };
   },
+
+  async reanalyzeCV(): Promise<{ extracted?: any; extractor?: string } | null> {
+    if (!USE_MOCK) {
+      const res = await api.post<any>('/candidates/me/documents/reanalyze', {});
+      return (res.data as any)?.data || res.data || null;
+    }
+    return null;
+  },
 };

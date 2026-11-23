@@ -12,6 +12,7 @@ const soloCandidato = [autenticar, exigirRol(Rol.CANDIDATO)];
 candidatesRouter.get('/me', ...soloCandidato, candidatesController.getProfile);
 candidatesRouter.put('/me', ...soloCandidato, candidatesController.updateProfile);
 candidatesRouter.post('/me/documents', ...soloCandidato, uploadSingleFile, candidatesController.uploadDocument);
+candidatesRouter.post('/me/documents/reanalyze', ...soloCandidato, candidatesController.reanalyzeCurrentCV);
 candidatesRouter.put('/me/photo', ...soloCandidato, uploadPhotoFile, candidatesController.uploadPhoto);
 
 // Descarga autenticada: permite al propio candidato o a RRHH/ADMIN de una empresa donde se postuló
