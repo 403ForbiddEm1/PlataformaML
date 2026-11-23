@@ -1,121 +1,130 @@
 {
   "model": "TF-IDF + variables de ajuste + regresion_logistica",
   "selected_model": "regresion_logistica",
-  "selection_criterion": "mayor promedio de F1 en validación cruzada agrupada por vacante (solo datos de entrenamiento)",
-  "n_pairs": 360,
-  "n_train": 264,
-  "n_test": 96,
+  "selection_criterion": "elegido manualmente (ML_MODEL=regresion_logistica); por F1 de validación cruzada habría ganado red_neuronal, pero la diferencia es pequeña y este modelo fue el más estable en las pruebas de simulación",
+  "best_by_criterion": "red_neuronal",
+  "feature_names": [
+    "coverage",
+    "idf_coverage",
+    "shared_terms",
+    "exp_unknown",
+    "cand_years",
+    "req_years",
+    "years_gap",
+    "meets_experience"
+  ],
+  "n_pairs": 1800,
+  "n_train": 1350,
+  "n_test": 450,
   "test": {
-    "accuracy": 0.885,
-    "precision": 0.679,
-    "recall": 0.905,
-    "f1": 0.776,
+    "accuracy": 0.862,
+    "precision": 0.708,
+    "recall": 0.942,
+    "f1": 0.809,
     "confusion_matrix": {
-      "tn": 66,
-      "fp": 9,
-      "fn": 2,
-      "tp": 19
+      "tn": 257,
+      "fp": 54,
+      "fn": 8,
+      "tp": 131
     },
-    "roc_auc": 0.929
+    "roc_auc": 0.934
   },
   "comparison": {
     "regresion_logistica": {
       "cv_train": {
-        "f1_mean": 0.795,
-        "f1_std": 0.064,
-        "roc_auc_mean": 0.946
+        "f1_mean": 0.787,
+        "f1_std": 0.017,
+        "roc_auc_mean": 0.927
       },
       "test": {
-        "accuracy": 0.885,
-        "precision": 0.679,
-        "recall": 0.905,
-        "f1": 0.776,
+        "accuracy": 0.862,
+        "precision": 0.708,
+        "recall": 0.942,
+        "f1": 0.809,
         "confusion_matrix": {
-          "tn": 66,
-          "fp": 9,
-          "fn": 2,
-          "tp": 19
+          "tn": 257,
+          "fp": 54,
+          "fn": 8,
+          "tp": 131
         },
-        "roc_auc": 0.929
+        "roc_auc": 0.934
       },
       "feature_importance": {
-        "cosine": -0.218,
-        "coverage": 1.447,
-        "jaccard": 0.582,
-        "shared_terms": 0.287,
-        "cand_len": 0.539,
-        "cand_years": -0.069,
-        "req_years": 0.01,
-        "years_gap": -0.067,
-        "meets_experience": 2.286
+        "coverage": 0.919,
+        "idf_coverage": -0.385,
+        "shared_terms": 1.468,
+        "exp_unknown": -0.056,
+        "cand_years": -0.114,
+        "req_years": -0.048,
+        "years_gap": -0.061,
+        "meets_experience": 1.788
       }
     },
     "random_forest": {
       "cv_train": {
-        "f1_mean": 0.718,
-        "f1_std": 0.105,
-        "roc_auc_mean": 0.939
+        "f1_mean": 0.81,
+        "f1_std": 0.04,
+        "roc_auc_mean": 0.918
       },
       "test": {
-        "accuracy": 0.896,
-        "precision": 0.739,
-        "recall": 0.81,
-        "f1": 0.773,
+        "accuracy": 0.889,
+        "precision": 0.783,
+        "recall": 0.885,
+        "f1": 0.831,
         "confusion_matrix": {
-          "tn": 69,
-          "fp": 6,
-          "fn": 4,
-          "tp": 17
+          "tn": 277,
+          "fp": 34,
+          "fn": 16,
+          "tp": 123
         },
-        "roc_auc": 0.896
+        "roc_auc": 0.926
       },
       "feature_importance": {
-        "cosine": 0.096,
-        "coverage": 0.278,
-        "jaccard": 0.141,
-        "shared_terms": 0.078,
-        "cand_len": 0.039,
-        "cand_years": 0.043,
-        "req_years": 0.034,
-        "years_gap": 0.158,
-        "meets_experience": 0.133
+        "coverage": 0.158,
+        "idf_coverage": 0.168,
+        "shared_terms": 0.285,
+        "exp_unknown": 0.042,
+        "cand_years": 0.078,
+        "req_years": 0.071,
+        "years_gap": 0.111,
+        "meets_experience": 0.088
       }
     },
     "red_neuronal": {
       "cv_train": {
-        "f1_mean": 0.772,
-        "f1_std": 0.116,
-        "roc_auc_mean": 0.95
+        "f1_mean": 0.825,
+        "f1_std": 0.037,
+        "roc_auc_mean": 0.93
       },
       "test": {
-        "accuracy": 0.896,
-        "precision": 0.789,
-        "recall": 0.714,
-        "f1": 0.75,
+        "accuracy": 0.9,
+        "precision": 0.826,
+        "recall": 0.856,
+        "f1": 0.841,
         "confusion_matrix": {
-          "tn": 71,
-          "fp": 4,
-          "fn": 6,
-          "tp": 15
+          "tn": 286,
+          "fp": 25,
+          "fn": 20,
+          "tp": 119
         },
-        "roc_auc": 0.907
+        "roc_auc": 0.941
       },
       "feature_importance": null
     }
   },
   "baseline_cosine": {
-    "accuracy": 0.625,
-    "precision": 0.358,
-    "recall": 0.905,
-    "f1": 0.514,
+    "accuracy": 0.729,
+    "precision": 0.536,
+    "recall": 0.906,
+    "f1": 0.674,
     "confusion_matrix": {
-      "tn": 41,
-      "fp": 34,
-      "fn": 2,
-      "tp": 19
+      "tn": 202,
+      "fp": 109,
+      "fn": 13,
+      "tp": 126
     },
-    "roc_auc": 0.784,
-    "threshold": 0.24
+    "roc_auc": 0.819,
+    "threshold": 0.16
   },
   "note": "Datos simulados: las métricas son ilustrativas."
 }
