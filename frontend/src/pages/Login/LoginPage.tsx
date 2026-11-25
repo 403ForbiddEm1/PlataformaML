@@ -94,31 +94,91 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [compPassword, setCompPassword] = useState('');
   const [isRegisteringCompany, setIsRegisteringCompany] = useState(false);
 
+  // Inline field errors (Login, Recovery, Register) - never float as toasts
+  const [loginErrors, setLoginErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [recoverErrors, setRecoverErrors] = useState<{
+    email?: string;
+    phone?: string;
+    code?: string;
+    newPassword?: string;
+    form?: string;
+  }>({});
+  const [regCandErrors, setRegCandErrors] = useState<{
+    name?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    form?: string;
+  }>({});
+  const [regCompErrors, setRegCompErrors] = useState<{
+    compName?: string;
+    compRif?: string;
+    compDomain?: string;
+    adminName?: string;
+    adminEmail?: string;
+    adminPhone?: string;
+    password?: string;
+    form?: string;
+  }>({});
+  const [googleErrors, setGoogleErrors] = useState<{ email?: string; code?: string; form?: string }>({});
+
+  const isValidEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
+  const isValidPersonName = (val: string) => /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,80}$/.test(val.trim());
+  const isValidPhoneNumber = (val: string) => {
+    const trimmed = val.trim();
+    if (!/^\+?[0-9\s\-()]{7,20}$/.test(trimmed)) return false;
+    const digits = trimmed.replace(/\D/g, '');
+    return digits.length >= 7 && digits.length <= 15;
+  };
+
   const isRegisterMode = authMode !== 'login';
 
   const openCandidateRegister = () => {
     setIsRecoverMode(false);
+    setLoginErrors({});
+    setRegCandErrors({});
     setAuthMode('register-candidate');
   };
 
   const openCompanyRegister = () => {
     setIsRecoverMode(false);
+    setLoginErrors({});
+    setRegCompErrors({});
     setAuthMode('register-company');
   };
 
   const backToLogin = () => {
+    setRegCandErrors({});
+    setRegCompErrors({});
     setAuthMode('login');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      showToast('Campos requeridos', 'Por favor ingresa tu correo y contraseña.', 'error');
+    const trimmedEmail = email.trim();
+    const nextErrors: { email?: string; password?: string; form?: string } = {};
+
+    if (!trimmedEmail) {
+      nextErrors.email = 'Ingresa tu correo electrónico para iniciar sesión.';
+    } else if (!isValidEmail(trimmedEmail)) {
+      nextErrors.email = 'El correo no tiene un formato válido (ej. usuario@empresa.com).';
+    }
+
+    if (!password) {
+      nextErrors.password = 'Ingresa tu contraseña.';
+    } else if (password.length < 6) {
+      nextErrors.password = 'La contraseña debe tener al menos 6 caracteres.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setLoginErrors(nextErrors);
       return;
     }
+
+    setLoginErrors({});
     setIsLoading(true);
     try {
-      const loggedInUser = await login({ email, password });
+      const loggedInUser = await login({ email: trimmedEmail, password });
 
       const roleTitles: Record<UserRole, string> = {
         candidato: 'Candidato',
@@ -135,11 +195,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       );
       onLoginSuccess(loggedInUser.role);
     } catch (err: any) {
-      showToast(
-        'Error al ingresar',
-        err?.message || 'Credenciales inválidas. Verifica tu correo y contraseña.',
-        'error'
-      );
+      const msg = err?.message || 'Credenciales inválidas. Verifica tu correo y contraseña.';
+      const lower = msg.toLowerCase();
+      if (lower.includes('credenciales')) {
+        setLoginErrors({
+          password: 'Correo o contraseña incorrectos. Verifica tus datos.',
+        });
+      } else if (lower.includes('correo')) {
+        setLoginErrors({ email: msg });
+      } else {
+        setLoginErrors({ form: msg });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -148,54 +214,76 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const handleRecover = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recoverCodeSent) {
-      if (recoverMethod === 'CORREO' && !recoverEmail.trim()) {
-        showToast('Correo requerido', 'Ingresa tu correo registrado para recibir el código.', 'error');
+      const nextErrors: { email?: string; phone?: string; form?: string } = {};
+      if (recoverMethod === 'CORREO') {
+        if (!recoverEmail.trim()) {
+          nextErrors.email = 'Ingresa tu correo registrado para recibir el código.';
+        } else if (!isValidEmail(recoverEmail)) {
+          nextErrors.email = 'Ingresa un correo electrónico válido.';
+        }
+      }
+      if (recoverMethod === 'TELEGRAM') {
+        if (!recoverPhone.trim()) {
+          nextErrors.phone = 'Ingresa tu número de Telegram registrado para recibir el código.';
+        } else if (!isValidPhoneNumber(recoverPhone)) {
+          nextErrors.phone = 'Ingresa un número de teléfono válido (solo dígitos, entre 7 y 15 números).';
+        }
+      }
+      if (Object.keys(nextErrors).length > 0) {
+        setRecoverErrors(nextErrors);
         return;
       }
-      if (recoverMethod === 'TELEGRAM' && !recoverPhone.trim()) {
-        showToast('Número requerido', 'Ingresa tu número de Telegram registrado para recibir el código.', 'error');
-        return;
-      }
+
+      setRecoverErrors({});
       setIsRecovering(true);
       try {
         const res = await authService.sendPasswordSecurityCode({
           canal: recoverMethod,
-          email: recoverMethod === 'CORREO' ? recoverEmail : undefined,
-          phone: recoverMethod === 'TELEGRAM' ? recoverPhone : undefined,
+          email: recoverMethod === 'CORREO' ? recoverEmail.trim() : undefined,
+          phone: recoverMethod === 'TELEGRAM' ? recoverPhone.trim() : undefined,
         });
         setRecoverCodeSent(true);
         showToast('Código enviado', res.mensaje, 'success');
       } catch (err: any) {
-        showToast('No se pudo enviar', err?.message || 'Verifica los datos ingresados.', 'error');
+        setRecoverErrors({
+          [recoverMethod === 'CORREO' ? 'email' : 'phone']:
+            err?.message || 'No se pudo enviar el código. Verifica los datos ingresados.',
+        });
       } finally {
         setIsRecovering(false);
       }
       return;
     }
 
+    const nextErrors: { code?: string; newPassword?: string; form?: string } = {};
     if (recoverCode.trim().length < 5) {
-      showToast('Código incompleto', 'Ingresa el código de 5 o 6 dígitos que recibiste.', 'error');
+      nextErrors.code = 'Ingresa el código completo de 5 o 6 dígitos que recibiste.';
+    }
+    if (recoverNewPassword.length < 8) {
+      nextErrors.newPassword = 'La nueva contraseña debe tener al menos 8 caracteres.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setRecoverErrors(nextErrors);
       return;
     }
-    if (recoverNewPassword.length < 6) {
-      showToast('Contraseña muy corta', 'La nueva contraseña debe tener al menos 6 caracteres.', 'error');
-      return;
-    }
+
+    setRecoverErrors({});
     setIsRecovering(true);
     try {
       await authService.verifyPasswordSecurityCode({
-        code: recoverCode,
+        code: recoverCode.trim(),
         newPassword: recoverNewPassword,
-        email: recoverMethod === 'CORREO' ? recoverEmail : undefined,
-        phone: recoverMethod === 'TELEGRAM' ? recoverPhone : undefined,
+        email: recoverMethod === 'CORREO' ? recoverEmail.trim() : undefined,
+        phone: recoverMethod === 'TELEGRAM' ? recoverPhone.trim() : undefined,
       });
       showToast('¡Contraseña restablecida!', 'Ya puedes iniciar sesión con tu nueva contraseña.', 'success');
       setIsRecoverMode(false);
       setRecoverCodeSent(false);
       setRecoverCode('');
       setRecoverNewPassword('');
+      setRecoverErrors({});
     } catch (err: any) {
-      showToast('Código inválido', err?.message || 'El código es incorrecto o expiró.', 'error');
+      setRecoverErrors({ code: err?.message || 'El código es incorrecto o ha expirado.' });
     } finally {
       setIsRecovering(false);
     }
@@ -203,14 +291,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   const handleRegisterCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword) return;
+    const nextErrors: { name?: string; email?: string; phone?: string; password?: string; form?: string } = {};
+
+    if (!regName.trim() || regName.trim().length < 3) {
+      nextErrors.name = 'Ingresa tu nombre completo (mín. 3 letras).';
+    } else if (!isValidPersonName(regName)) {
+      nextErrors.name = 'Solo letras y espacios (sin números ni símbolos).';
+    }
+    if (!regEmail.trim()) {
+      nextErrors.email = 'Ingresa un correo electrónico válido.';
+    } else if (!isValidEmail(regEmail)) {
+      nextErrors.email = 'Formato de correo inválido (ej. valeria@correo.com).';
+    }
+    if (regPhone.trim() && !isValidPhoneNumber(regPhone)) {
+      nextErrors.phone = 'Solo números de teléfono válidos (7 a 15 dígitos).';
+    }
+    if (!regPassword) {
+      nextErrors.password = 'Crea una contraseña segura.';
+    } else if (regPassword.length < 8) {
+      nextErrors.password = 'La contraseña debe tener al menos 8 caracteres.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setRegCandErrors(nextErrors);
+      return;
+    }
+
+    setRegCandErrors({});
     // Enviar código de confirmación de 6 dígitos al correo del candidato antes de crear/activar la sesión
     setIsRegistering(true);
     try {
       await authService.sendGoogleCode({
-        email: regEmail,
-        name: regName,
-        phone: regPhone,
+        email: regEmail.trim(),
+        name: regName.trim(),
+        phone: regPhone.trim(),
         password: regPassword,
         modo: 'register',
       });
@@ -220,15 +334,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setGooglePassword(regPassword);
       setGoogleCode('');
       setGoogleCodeSent(true);
+      setGoogleErrors({});
       setGoogleFlowOrigin('register');
       setIsGoogleFlowOpen(true);
       showToast(
         'Código enviado a tu correo',
-        `Enviamos un código de confirmación de 6 dígitos a ${regEmail}. Ingrésalo para activar tu cuenta.`,
+        `Enviamos un código de confirmación de 6 dígitos a ${regEmail.trim()}. Ingrésalo para activar tu cuenta.`,
         'success'
       );
     } catch (err: any) {
-      showToast('Error', err?.message || 'No se pudo enviar el código de confirmación.', 'error');
+      const msg = err?.message || 'No se pudo enviar el código de confirmación.';
+      if (msg.toLowerCase().includes('correo') || msg.toLowerCase().includes('cuenta')) {
+        setRegCandErrors({ email: msg });
+      } else {
+        setRegCandErrors({ form: msg });
+      }
     } finally {
       setIsRegistering(false);
     }
@@ -325,13 +445,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           'info',
         );
       } catch (err: any) {
-        showToast('Error al enviar código', err?.message || 'Verifica el correo ingresado.', 'error');
+        setGoogleErrors({ email: err?.message || 'No se pudo enviar el código. Verifica el correo ingresado.' });
       } finally {
         setIsGoogleSending(false);
       }
       return;
     }
 
+    setGoogleErrors({});
     setIsGoogleVerifying(true);
     try {
       const { user: loggedUser } = await authService.quickGoogleLogin({
@@ -344,7 +465,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setIsGoogleFlowOpen(false);
       onLoginSuccess(loggedUser.role);
     } catch (err: any) {
-      showToast('Error al iniciar con Google', err?.message || 'No se pudo iniciar sesión.', 'error');
+      setGoogleErrors({ form: err?.message || 'No se pudo iniciar sesión con Google.' });
     } finally {
       setIsGoogleVerifying(false);
     }
@@ -352,23 +473,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   const handleSendGoogleOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!googleEmail || !googleEmail.includes('@')) {
-      showToast('Correo requerido', 'Ingresa tu correo de Google (@gmail.com) para recibir el código.', 'error');
+    const trimmed = googleEmail.trim();
+    if (!trimmed) {
+      setGoogleErrors({ email: 'Ingresa tu correo de Google para recibir el código.' });
       return;
     }
+    if (!isValidEmail(trimmed)) {
+      setGoogleErrors({ email: 'El correo no tiene un formato válido (ej. tucorreo@gmail.com).' });
+      return;
+    }
+    setGoogleErrors({});
     setIsGoogleSending(true);
     try {
       const res = await authService.sendGoogleCode({
-        email: googleEmail,
-        name: googleName || undefined,
-        phone: googlePhone || undefined,
+        email: trimmed,
+        name: googleName.trim() || undefined,
+        phone: googlePhone.trim() || undefined,
         password: googlePassword || undefined,
         modo: googleFlowOrigin,
       });
       setGoogleCodeSent(true);
       showToast('Código enviado', res.mensaje, 'success');
     } catch (err: any) {
-      showToast('Error al enviar código', err?.message || 'Verifica el correo ingresado.', 'error');
+      setGoogleErrors({ email: err?.message || 'No se pudo enviar el código. Verifica el correo ingresado.' });
     } finally {
       setIsGoogleSending(false);
     }
@@ -377,16 +504,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const handleVerifyGoogleOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!googleCode || googleCode.trim().length < 6) {
-      showToast('Código incompleto', 'Ingresa el código de 6 dígitos que llegó a tu correo.', 'error');
+      setGoogleErrors({ code: 'Ingresa el código completo de 6 dígitos que llegó a tu correo.' });
       return;
     }
+    setGoogleErrors({});
     setIsGoogleVerifying(true);
     try {
       const { user: verifiedUser } = await authService.verifyGoogleCode({
-        email: googleEmail,
-        code: googleCode,
-        name: googleName || undefined,
-        phone: googlePhone || undefined,
+        email: googleEmail.trim(),
+        code: googleCode.trim(),
+        name: googleName.trim() || undefined,
+        phone: googlePhone.trim() || undefined,
         password: googlePassword || undefined,
       });
       setSessionUser(verifiedUser);
@@ -414,7 +542,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setIsGoogleFlowOpen(false);
       onLoginSuccess(verifiedUser.role);
     } catch (err: any) {
-      showToast('Código inválido', err?.message || 'El código ingresado es incorrecto o expiró.', 'error');
+      setGoogleErrors({ code: err?.message || 'El código ingresado es incorrecto o expiró.' });
     } finally {
       setIsGoogleVerifying(false);
     }
@@ -422,27 +550,62 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!compName || !compAdminEmail || !compPassword) {
-      showToast('Campos incompletos', 'Completa los datos de la empresa y del administrador.', 'error');
+    const nextErrors: {
+      compName?: string;
+      compRif?: string;
+      compDomain?: string;
+      adminName?: string;
+      adminEmail?: string;
+      adminPhone?: string;
+      password?: string;
+      form?: string;
+    } = {};
+
+    if (!compName.trim() || compName.trim().length < 2) {
+      nextErrors.compName = 'Ingresa el nombre oficial de la empresa.';
+    }
+    if (!compAdminName.trim() || compAdminName.trim().length < 3) {
+      nextErrors.adminName = 'Ingresa el nombre del administrador (mín. 3 letras).';
+    } else if (!isValidPersonName(compAdminName)) {
+      nextErrors.adminName = 'Solo letras y espacios (sin números ni símbolos).';
+    }
+    if (!compAdminEmail.trim()) {
+      nextErrors.adminEmail = 'Ingresa el correo corporativo.';
+    } else if (!isValidEmail(compAdminEmail)) {
+      nextErrors.adminEmail = 'Formato de correo corporativo inválido.';
+    }
+    if (compAdminPhone.trim() && !isValidPhoneNumber(compAdminPhone)) {
+      nextErrors.adminPhone = 'Solo números de teléfono válidos (7 a 15 dígitos).';
+    }
+    if (!compPassword) {
+      nextErrors.password = 'Crea una contraseña de acceso.';
+    } else if (compPassword.length < 8) {
+      nextErrors.password = 'La contraseña debe tener al menos 8 caracteres.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setRegCompErrors(nextErrors);
       return;
     }
+
+    setRegCompErrors({});
     setIsRegisteringCompany(true);
     try {
       const result = await empresaService.registerCompany({
-        nombreEmpresa: compName,
-        rif: compRif,
-        dominio: compDomain,
-        adminName: compAdminName,
-        adminEmail: compAdminEmail,
+        nombreEmpresa: compName.trim(),
+        rif: compRif.trim(),
+        dominio: compDomain.trim(),
+        adminName: compAdminName.trim(),
+        adminEmail: compAdminEmail.trim(),
         password: compPassword,
-        phone: compAdminPhone,
+        phone: compAdminPhone.trim(),
       });
       showToast(
         '¡Empresa Registrada y Activa!',
-        `Tu empresa "${result.empresa.nombre}" ya está activa. Puedes iniciar sesión inmediatamente con ${compAdminEmail}.`,
+        `Tu empresa "${result.empresa.nombre}" ya está activa. Puedes iniciar sesión inmediatamente con ${compAdminEmail.trim()}.`,
         'success'
       );
-      setEmail(compAdminEmail);
+      setEmail(compAdminEmail.trim());
       setAuthMode('login');
       setCompName('');
       setCompRif('');
@@ -451,15 +614,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setCompAdminEmail('');
       setCompAdminPhone('');
       setCompPassword('');
+      setRegCompErrors({});
     } catch (err: any) {
-      showToast('Error', err?.message || 'No se pudo completar el registro de la empresa.', 'error');
+      const msg = err?.message || 'No se pudo completar el registro de la empresa.';
+      const lower = msg.toLowerCase();
+      if (lower.includes('empresa con ese nombre')) {
+        setRegCompErrors({ compName: msg });
+      } else if (lower.includes('identificación fiscal') || lower.includes('rif')) {
+        setRegCompErrors({ compRif: msg });
+      } else if (lower.includes('correo') || lower.includes('cuenta')) {
+        setRegCompErrors({ adminEmail: msg });
+      } else {
+        setRegCompErrors({ form: msg });
+      }
     } finally {
       setIsRegisteringCompany(false);
     }
   };
 
   return (
-    <div className="relative min-h-dvh lg:h-dvh w-full bg-[#F1F2EC] dark:bg-[#090A0C] text-[#090A0C] dark:text-[#F1F2EC] flex flex-col overflow-x-hidden lg:overflow-hidden select-none transition-colors duration-300">
+    <div className="relative min-h-dvh w-full bg-[#F1F2EC] dark:bg-[#090A0C] text-[#090A0C] dark:text-[#F1F2EC] flex flex-col overflow-x-hidden select-none transition-colors duration-300">
       {/* =====================================================================
           1. BACKGROUND WORKSPACE PHOTO + GRADIENT + FLOATING VECTOR PARTICLES
          ===================================================================== */}
@@ -596,59 +770,86 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             3. SPLIT-DIAGONAL AUTH STAGE (Shares All 4 Borders + Animated Border Beam)
            ===================================================================== */}
         <main
-          className={`flex-1 min-h-0 relative overflow-hidden bg-[#F1F2EC]/18 dark:bg-[#090A0C]/24 backdrop-blur-[2px] login-auth-stage login-animated-perimeter grid grid-cols-1 lg:grid-cols-2 ${
+          className={`flex-1 min-h-0 relative overflow-x-hidden bg-[#F1F2EC]/18 dark:bg-[#090A0C]/24 backdrop-blur-[2px] login-auth-stage login-animated-perimeter grid grid-cols-1 lg:grid-cols-2 ${
             isRegisterMode ? 'is-register' : ''
           }`}
         >
           {/* LEFT HALF: SIGN IN / INLINE PASSWORD RECOVERY */}
           <section
-            className={`login-form-pane--login relative z-10 flex flex-col justify-center px-5 sm:px-10 lg:pl-12 lg:pr-14 xl:pl-16 xl:pr-16 py-6 sm:py-8 overflow-y-auto ${
+            className={`login-form-pane--login relative z-10 flex flex-col justify-center px-5 sm:px-10 lg:pl-12 lg:pr-14 xl:pl-16 xl:pr-16 py-5 sm:py-6 ${
               isRegisterMode ? 'hidden lg:flex' : 'flex'
             }`}
           >
-            <div className="w-full max-w-md mx-auto space-y-4">
+            <div className="w-full max-w-[475px] mx-auto space-y-4">
               {!isRecoverMode ? (
                 <>
                   {/* Card Header (Clean, without PORTAL DE ACCESO UNIFICADO) */}
                   <div className="space-y-1.5">
-                    <h1 className="font-heading text-2xl sm:text-3xl xl:text-[32px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
+                    <h1 className="font-heading text-[26px] sm:text-[32px] xl:text-[36px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
                       Iniciar sesión
                     </h1>
-                    <p className="text-xs text-[#777873] font-normal leading-snug">
+                    <p className="text-xs sm:text-sm text-[#090A0C]/85 dark:text-[#F1F2EC]/90 font-normal leading-snug">
                       Ingresa tus credenciales para acceder a tu expediente, mesa de evaluación o consola corporativa.
                     </p>
                   </div>
 
                   {/* Login Form */}
-                  <form onSubmit={handleSubmit} className="space-y-3">
+                  <form noValidate onSubmit={handleSubmit} className="space-y-3.5">
+                    {loginErrors.form && (
+                      <div
+                        role="alert"
+                        className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs font-medium text-rose-600 dark:text-rose-400"
+                      >
+                        {loginErrors.form}
+                      </div>
+                    )}
+
                     <Input
                       label="Correo electrónico"
                       type="email"
-                      placeholder="nombre@empresa.com"
+                      autoComplete="email"
+                      placeholder="nombre@email.com"
                       leftIcon={<Mail className="w-4 h-4" />}
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="bg-white/75! dark:bg-black/35! backdrop-blur-md! text-[#090A0C]! dark:text-[#F1F2EC]! border-slate-300/70! dark:border-white/14! shadow-[inset_2px_2px_6px_rgba(15,23,42,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.6)]! dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.5),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]! focus:border-[#4C6FFF]! dark:focus:border-[#C8FF45]!"
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (loginErrors.email || loginErrors.form) {
+                          setLoginErrors((prev) => ({ ...prev, email: undefined, form: undefined }));
+                        }
+                      }}
+                      error={loginErrors.email}
+                      className="py-3 text-[15px] bg-white/75! dark:bg-black/35! backdrop-blur-md! text-[#090A0C]! dark:text-[#F1F2EC]! border-slate-300/70! dark:border-white/14! shadow-[inset_2px_2px_6px_rgba(15,23,42,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.6)]! dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.5),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]! focus:border-[#4C6FFF]! dark:focus:border-[#C8FF45]!"
                       required
                     />
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <Input
                         label="Contraseña"
                         type="password"
+                        autoComplete="current-password"
                         placeholder="••••••••"
                         isPassword
                         leftIcon={<Lock className="w-4 h-4" />}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="bg-white/75! dark:bg-black/35! backdrop-blur-md! text-[#090A0C]! dark:text-[#F1F2EC]! border-slate-300/70! dark:border-white/14! shadow-[inset_2px_2px_6px_rgba(15,23,42,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.6)]! dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.5),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]! focus:border-[#4C6FFF]! dark:focus:border-[#C8FF45]!"
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (loginErrors.password || loginErrors.form) {
+                            setLoginErrors((prev) => ({ ...prev, password: undefined, form: undefined }));
+                          }
+                        }}
+                        error={loginErrors.password}
+                        className="py-3 text-[15px] bg-white/75! dark:bg-black/35! backdrop-blur-md! text-[#090A0C]! dark:text-[#F1F2EC]! border-slate-300/70! dark:border-white/14! shadow-[inset_2px_2px_6px_rgba(15,23,42,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.6)]! dark:shadow-[inset_3px_3px_8px_rgba(0,0,0,0.5),inset_-1px_-1px_4px_rgba(255,255,255,0.05)]! focus:border-[#4C6FFF]! dark:focus:border-[#C8FF45]!"
                         required
                       />
                       <div className="flex justify-end">
                         <button
                           type="button"
-                          onClick={() => setIsRecoverMode(true)}
-                          className="text-[11px] sm:text-xs font-medium text-[#777873] hover:text-[#4C6FFF] dark:hover:text-[#C8FF45] transition-colors cursor-pointer"
+                          onClick={() => {
+                            setLoginErrors({});
+                            setRecoverErrors({});
+                            setIsRecoverMode(true);
+                          }}
+                          className="text-xs sm:text-[13px] font-medium text-[#090A0C]/80 dark:text-[#F1F2EC]/88 hover:text-[#4C6FFF] dark:hover:text-[#C8FF45] transition-colors cursor-pointer"
                         >
                           ¿Olvidaste tu contraseña?
                         </button>
@@ -659,7 +860,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full py-2.5 sm:py-3 px-5 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-sm tracking-tight border border-[#84cc16] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_4px_0_#3f6212] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_5px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="w-full py-3 px-5 rounded-xl bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-heading font-bold text-[15px] tracking-tight border border-[#84cc16] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_4px_0_#3f6212] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_5px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[3px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <span>{isLoading ? 'Verificando credenciales...' : 'Ingresar a PlataformaML'}</span>
                         <ArrowRight className="w-4 h-4" />
@@ -668,7 +869,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <button
                         type="button"
                         onClick={() => openGoogleAuthFlow('login')}
-                        className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-xs sm:text-sm border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2.5 cursor-pointer"
+                        className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-sm border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2.5 cursor-pointer"
                       >
                         <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -683,7 +884,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                   {/* Registration Triggers -> Slides Inclined Diagonal Panel to Left */}
                   <div className="space-y-2.5 pt-3 border-t border-[#090A0C]/12 dark:border-[#F1F2EC]/12">
-                    <p className="text-[11px] font-medium text-[#777873] text-center">
+                    <p className="text-xs font-medium text-[#090A0C]/80 dark:text-[#F1F2EC]/88 text-center">
                       ¿Aún no tienes cuenta en la plataforma?
                     </p>
 
@@ -691,26 +892,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <button
                         type="button"
                         onClick={openCandidateRegister}
-                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#090A0C] hover:text-[#090A0C] dark:text-[#C8FF45] dark:hover:text-white !bg-white/85 hover:!bg-white dark:!bg-[#12151C]/85 dark:hover:!bg-[#1B202B] backdrop-blur-xs border border-[#090A0C]/18 dark:border-[#C8FF45]/45 hover:border-[#4C6FFF] dark:hover:border-[#C8FF45] shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#3f6212] hover:shadow-[0_4px_0_#475569] dark:hover:shadow-[0_4px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer group"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#090A0C] hover:text-[#090A0C] dark:text-[#C8FF45] dark:hover:text-white !bg-white/85 hover:!bg-white dark:!bg-[#12151C]/85 dark:hover:!bg-[#1B202B] backdrop-blur-xs border border-[#090A0C]/18 dark:border-[#C8FF45]/45 hover:border-[#4C6FFF] dark:hover:border-[#C8FF45] shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#3f6212] hover:shadow-[0_4px_0_#475569] dark:hover:shadow-[0_4px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer group"
                       >
-                        <UserPlus className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45] group-hover:text-[#090A0C] dark:group-hover:text-white shrink-0" />
+                        <UserPlus className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45] group-hover:text-[#090A0C] dark:group-hover:text-white shrink-0" />
                         <span>Soy Candidato</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={openCompanyRegister}
-                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-white hover:text-white bg-[#4C6FFF] hover:bg-[#6180FF] border border-[#2563eb] shadow-[0_3px_0_#1e40af] hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-white hover:text-white bg-[#4C6FFF] hover:bg-[#6180FF] border border-[#2563eb] shadow-[0_3px_0_#1e40af] hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer"
                       >
-                        <Building2 className="w-3.5 h-3.5 text-white shrink-0" />
+                        <Building2 className="w-4 h-4 text-white shrink-0" />
                         <span>Afiliar Empresa</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Security Footer Badge */}
-                  <div className="pt-0.5 flex items-center justify-center gap-2 text-[11px] text-[#777873]">
-                    <Lock className="w-3.5 h-3.5 text-[#4C6FFF]/80 dark:text-[#C8FF45]/80 shrink-0" />
+                  <div className="pt-0.5 flex items-center justify-center gap-2 text-xs text-[#090A0C]/80 dark:text-[#F1F2EC]/85">
+                    <Lock className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
                     <span>Sesión cifrada con JWT y aislamiento Multi-Tenant</span>
                   </div>
                 </>
@@ -738,7 +939,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         <h2 className="font-heading text-xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight">
                           Recuperar contraseña
                         </h2>
-                        <p className="text-[11px] text-[#777873]">
+                        <p className="text-xs text-[#090A0C]/80 dark:text-[#F1F2EC]/85">
                           Elige recibir tu código de 6 dígitos por Correo o por Telegram
                         </p>
                       </div>
@@ -781,13 +982,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  <form onSubmit={handleRecover} className="space-y-3.5">
+                  <form noValidate onSubmit={handleRecover} className="space-y-3.5">
+                    {recoverErrors.form && (
+                      <div
+                        role="alert"
+                        className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs font-medium text-rose-600 dark:text-rose-400"
+                      >
+                        {recoverErrors.form}
+                      </div>
+                    )}
+
                     {recoverMethod === 'CORREO' ? (
                       <Input
                         label="Correo electrónico registrado *"
                         type="email"
+                        autoComplete="email"
                         value={recoverEmail}
-                        onChange={(e) => setRecoverEmail(e.target.value)}
+                        onChange={(e) => {
+                          setRecoverEmail(e.target.value);
+                          if (recoverErrors.email) setRecoverErrors((prev) => ({ ...prev, email: undefined }));
+                        }}
+                        error={recoverErrors.email}
                         placeholder="ejemplo@correo.com"
                         leftIcon={<Mail className="w-4 h-4" />}
                         className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
@@ -797,8 +1012,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <Input
                         label="Número de Telegram registrado *"
                         type="tel"
+                        autoComplete="tel"
                         value={recoverPhone}
-                        onChange={(e) => setRecoverPhone(e.target.value)}
+                        onChange={(e) => {
+                          setRecoverPhone(e.target.value);
+                          if (recoverErrors.phone) setRecoverErrors((prev) => ({ ...prev, phone: undefined }));
+                        }}
+                        error={recoverErrors.phone}
                         placeholder="+58 412 0000000"
                         className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
                         required
@@ -809,18 +1029,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <div className="space-y-3 pt-1 animate-pop-in">
                         <Input
                           label="Código de verificación (6 dígitos) *"
+                          autoComplete="one-time-code"
                           value={recoverCode}
-                          onChange={(e) => setRecoverCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          onChange={(e) => {
+                            setRecoverCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                            if (recoverErrors.code) setRecoverErrors((prev) => ({ ...prev, code: undefined }));
+                          }}
+                          error={recoverErrors.code}
                           placeholder="123456"
                           required
                         />
                         <Input
                           label="Nueva contraseña *"
                           type="password"
+                          autoComplete="new-password"
                           isPassword
                           value={recoverNewPassword}
-                          onChange={(e) => setRecoverNewPassword(e.target.value)}
-                          placeholder="Mínimo 6 caracteres"
+                          onChange={(e) => {
+                            setRecoverNewPassword(e.target.value);
+                            if (recoverErrors.newPassword) {
+                              setRecoverErrors((prev) => ({ ...prev, newPassword: undefined }));
+                            }
+                          }}
+                          error={recoverErrors.newPassword}
+                          placeholder="Mínimo 8 caracteres"
                           required
                         />
                       </div>
@@ -861,7 +1093,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
           {/* RIGHT HALF: INLINE REGISTRATION PANEL (Candidate or Company, replaces Modals) */}
           <section
-            className={`login-form-pane--register relative z-10 flex flex-col justify-center px-5 sm:px-10 lg:pl-14 lg:pr-12 xl:pl-16 xl:pr-14 py-5 sm:py-6 overflow-y-auto ${
+            className={`login-form-pane--register relative z-10 flex flex-col justify-center px-5 sm:px-10 lg:pl-14 lg:pr-12 xl:pl-16 xl:pr-14 py-5 sm:py-6 ${
               !isRegisterMode ? 'hidden lg:flex' : 'flex'
             }`}
           >
@@ -907,7 +1139,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
               {authMode === 'register-company' ? (
                 /* INLINE COMPANY REGISTRATION */
-                <form onSubmit={handleRegisterCompany} className="space-y-3">
+                <form noValidate onSubmit={handleRegisterCompany} className="space-y-3">
                   <div>
                     <h2 className="font-heading text-xl sm:text-2xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
                       Afiliar Nueva Organización
@@ -916,6 +1148,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       Habilita reclutamiento inteligente y gestión de plantilla multi-tenant.
                     </p>
                   </div>
+
+                  {regCompErrors.form && (
+                    <div
+                      role="alert"
+                      className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs font-medium text-rose-600 dark:text-rose-400"
+                    >
+                      {regCompErrors.form}
+                    </div>
+                  )}
 
                   <div className="p-3 rounded-2xl bg-[#090A0C]/[0.04] dark:bg-[#F1F2EC]/[0.04] border border-[#090A0C]/10 dark:border-[#F1F2EC]/10 space-y-2.5">
                     <h4 className="font-heading text-[11px] font-bold text-[#090A0C] dark:text-[#F1F2EC] uppercase tracking-wider flex items-center gap-2">
@@ -929,7 +1170,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <Input
                         label="Nombre Empresa *"
                         value={compName}
-                        onChange={(e) => setCompName(e.target.value)}
+                        onChange={(e) => {
+                          setCompName(e.target.value);
+                          if (regCompErrors.compName || regCompErrors.form) {
+                            setRegCompErrors((prev) => ({ ...prev, compName: undefined, form: undefined }));
+                          }
+                        }}
+                        error={regCompErrors.compName}
                         placeholder="Corporación Caribe"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                         required
@@ -937,14 +1184,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <Input
                         label="RIF / ID Fiscal"
                         value={compRif}
-                        onChange={(e) => setCompRif(e.target.value)}
+                        onChange={(e) => {
+                          setCompRif(e.target.value);
+                          if (regCompErrors.compRif) setRegCompErrors((prev) => ({ ...prev, compRif: undefined }));
+                        }}
+                        error={regCompErrors.compRif}
                         placeholder="J-40192837-1"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                       />
                       <Input
                         label="Dominio Web"
                         value={compDomain}
-                        onChange={(e) => setCompDomain(e.target.value)}
+                        onChange={(e) => {
+                          setCompDomain(e.target.value);
+                          if (regCompErrors.compDomain) setRegCompErrors((prev) => ({ ...prev, compDomain: undefined }));
+                        }}
+                        error={regCompErrors.compDomain}
                         placeholder="empresa.com"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                       />
@@ -962,8 +1217,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <Input
                         label="Nombre Administrador *"
+                        autoComplete="name"
                         value={compAdminName}
-                        onChange={(e) => setCompAdminName(e.target.value)}
+                        onChange={(e) => {
+                          setCompAdminName(e.target.value);
+                          if (regCompErrors.adminName) setRegCompErrors((prev) => ({ ...prev, adminName: undefined }));
+                        }}
+                        error={regCompErrors.adminName}
                         placeholder="Ing. Sofía Velásquez"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                         required
@@ -971,25 +1231,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <Input
                         label="Correo Corporativo *"
                         type="email"
+                        autoComplete="email"
                         value={compAdminEmail}
-                        onChange={(e) => setCompAdminEmail(e.target.value)}
+                        onChange={(e) => {
+                          setCompAdminEmail(e.target.value);
+                          if (regCompErrors.adminEmail || regCompErrors.form) {
+                            setRegCompErrors((prev) => ({ ...prev, adminEmail: undefined, form: undefined }));
+                          }
+                        }}
+                        error={regCompErrors.adminEmail}
                         placeholder="sofia@empresa.com"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                         required
                       />
                       <Input
                         label="Teléfono Corporativo"
+                        type="tel"
+                        autoComplete="tel"
                         value={compAdminPhone}
-                        onChange={(e) => setCompAdminPhone(e.target.value)}
+                        onChange={(e) => {
+                          setCompAdminPhone(e.target.value);
+                          if (regCompErrors.adminPhone) setRegCompErrors((prev) => ({ ...prev, adminPhone: undefined }));
+                        }}
+                        error={regCompErrors.adminPhone}
                         placeholder="+1 (809) 555-0371"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                       />
                       <Input
                         label="Contraseña de Acceso *"
                         type="password"
+                        autoComplete="new-password"
                         isPassword
                         value={compPassword}
-                        onChange={(e) => setCompPassword(e.target.value)}
+                        onChange={(e) => {
+                          setCompPassword(e.target.value);
+                          if (regCompErrors.password) setRegCompErrors((prev) => ({ ...prev, password: undefined }));
+                        }}
+                        error={regCompErrors.password}
                         placeholder="Mínimo 8 caracteres"
                         className="py-1.5 text-xs bg-white/75! dark:bg-black/35!"
                         required
@@ -1017,7 +1295,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </form>
               ) : (
                 /* INLINE CANDIDATE REGISTRATION */
-                <form onSubmit={handleRegisterCandidate} className="space-y-3.5">
+                <form noValidate onSubmit={handleRegisterCandidate} className="space-y-3.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <h2 className="font-heading text-xl sm:text-2xl font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
@@ -1042,11 +1320,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </button>
                   </div>
 
+                  {regCandErrors.form && (
+                    <div
+                      role="alert"
+                      className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs font-medium text-rose-600 dark:text-rose-400"
+                    >
+                      {regCandErrors.form}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Input
                       label="Nombres y Apellidos *"
+                      autoComplete="name"
                       value={regName}
-                      onChange={(e) => setRegName(e.target.value)}
+                      onChange={(e) => {
+                        setRegName(e.target.value);
+                        if (regCandErrors.name) setRegCandErrors((prev) => ({ ...prev, name: undefined }));
+                      }}
+                      error={regCandErrors.name}
                       placeholder="Valeria Mendoza"
                       className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
                       required
@@ -1054,25 +1346,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <Input
                       label="Correo Electrónico *"
                       type="email"
+                      autoComplete="email"
                       value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
+                      onChange={(e) => {
+                        setRegEmail(e.target.value);
+                        if (regCandErrors.email || regCandErrors.form) {
+                          setRegCandErrors((prev) => ({ ...prev, email: undefined, form: undefined }));
+                        }
+                      }}
+                      error={regCandErrors.email}
                       placeholder="valeria@correo.com"
                       className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
                       required
                     />
                     <Input
                       label="Teléfono / Telegram"
+                      type="tel"
+                      autoComplete="tel"
                       value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
+                      onChange={(e) => {
+                        setRegPhone(e.target.value);
+                        if (regCandErrors.phone) setRegCandErrors((prev) => ({ ...prev, phone: undefined }));
+                      }}
+                      error={regCandErrors.phone}
                       placeholder="+1 (809) 000-0000"
                       className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
                     />
                     <Input
                       label="Contraseña segura *"
                       type="password"
+                      autoComplete="new-password"
                       isPassword
                       value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
+                      onChange={(e) => {
+                        setRegPassword(e.target.value);
+                        if (regCandErrors.password) setRegCandErrors((prev) => ({ ...prev, password: undefined }));
+                      }}
+                      error={regCandErrors.password}
                       placeholder="Mínimo 8 caracteres"
                       className="bg-white/75! dark:bg-black/35! backdrop-blur-md!"
                       required
@@ -1154,9 +1464,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           </span>
                         </div>
                       </div>
-                      <span className="font-mono-tabular text-[11px] font-semibold px-2.5 py-0.5 rounded-lg bg-[#090A0C] dark:bg-[#C8FF45]/15 text-[#C8FF45] border border-[#C8FF45]/35">
-                        94.8% PRECISIÓN
-                      </span>
                     </div>
 
                     <div className="space-y-1.5 relative z-10">
@@ -1340,9 +1647,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </>
                   ) : (
                     <form
+                      noValidate
                       onSubmit={(e) => {
                         e.preventDefault();
-                        if (!googleEmail || !googleEmail.includes('@')) return;
+                        if (!googleEmail.trim()) {
+                          setGoogleErrors({ email: 'Ingresa tu correo de Google.' });
+                          return;
+                        }
+                        if (!isValidEmail(googleEmail)) {
+                          setGoogleErrors({ email: 'El correo no tiene un formato válido.' });
+                          return;
+                        }
+                        setGoogleErrors({});
                         handleSelectGoogleAccount({ email: googleEmail, name: googleName || undefined });
                       }}
                       className="space-y-3"
@@ -1350,14 +1666,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <Input
                         label="Correo de Google *"
                         type="email"
+                        autoComplete="email"
                         placeholder="tucorreo@gmail.com"
                         leftIcon={<Mail className="w-4 h-4" />}
                         value={googleEmail}
-                        onChange={(e) => setGoogleEmail(e.target.value)}
+                        onChange={(e) => {
+                          setGoogleEmail(e.target.value);
+                          if (googleErrors.email) setGoogleErrors((prev) => ({ ...prev, email: undefined }));
+                        }}
+                        error={googleErrors.email}
                         required
                       />
                       <Input
                         label="Tu nombre (opcional)"
+                        autoComplete="name"
                         placeholder="María Pérez"
                         value={googleName}
                         onChange={(e) => setGoogleName(e.target.value)}
@@ -1382,26 +1704,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   )}
                 </div>
               ) : !googleCodeSent ? (
-                <form onSubmit={handleSendGoogleOtp} className="space-y-3.5">
+                <form noValidate onSubmit={handleSendGoogleOtp} className="space-y-3.5">
+                  {googleErrors.form && (
+                    <div
+                      role="alert"
+                      className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs font-medium text-rose-600 dark:text-rose-400"
+                    >
+                      {googleErrors.form}
+                    </div>
+                  )}
                   <Input
                     label="Correo electrónico de Google *"
                     type="email"
+                    autoComplete="email"
                     placeholder="tucorreo@gmail.com"
                     leftIcon={<Mail className="w-4 h-4" />}
                     value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    onChange={(e) => {
+                      setGoogleEmail(e.target.value);
+                      if (googleErrors.email || googleErrors.form) {
+                        setGoogleErrors((prev) => ({ ...prev, email: undefined, form: undefined }));
+                      }
+                    }}
+                    error={googleErrors.email}
                     required
                   />
                   {googleFlowOrigin === 'register' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <Input
                         label="Nombres y Apellidos"
+                        autoComplete="name"
                         placeholder="María Pérez"
                         value={googleName}
                         onChange={(e) => setGoogleName(e.target.value)}
                       />
                       <Input
                         label="Teléfono / Telegram"
+                        type="tel"
+                        autoComplete="tel"
                         placeholder="+58 412 0000000"
                         value={googlePhone}
                         onChange={(e) => setGooglePhone(e.target.value)}
@@ -1427,7 +1767,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 </form>
               ) : (
-                <form onSubmit={handleVerifyGoogleOtp} className="space-y-4">
+                <form noValidate onSubmit={handleVerifyGoogleOtp} className="space-y-4">
                   <div className="p-3 rounded-xl bg-[#4C6FFF]/10 dark:bg-[#C8FF45]/10 border border-[#4C6FFF]/25 dark:border-[#C8FF45]/30 text-xs text-[#090A0C] dark:text-[#F1F2EC]">
                     Enviamos un código de 6 dígitos a <strong className="font-bold">{googleEmail}</strong>. Revisa tu bandeja de entrada e ingrésalo abajo:
                   </div>
@@ -1435,10 +1775,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   <Input
                     label="Código de verificación (6 dígitos) *"
                     type="text"
+                    autoComplete="one-time-code"
                     placeholder="123456"
                     maxLength={6}
                     value={googleCode}
-                    onChange={(e) => setGoogleCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    onChange={(e) => {
+                      setGoogleCode(e.target.value.replace(/[^0-9]/g, ''));
+                      if (googleErrors.code) setGoogleErrors((prev) => ({ ...prev, code: undefined }));
+                    }}
+                    error={googleErrors.code}
                     className="text-center font-mono-tabular text-xl tracking-[0.4em] font-bold"
                     required
                   />

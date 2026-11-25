@@ -44,15 +44,21 @@ import {
   BarChart3,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Folder,
   Trash2,
   AlertTriangle,
   LogOut,
   LifeBuoy,
   Eye,
+  SlidersHorizontal,
 } from 'lucide-react';
 
-export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
+export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?: string) => void; initialTab?: string }> = ({
+  onNavigate,
+  initialTab,
+}) => {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
 
@@ -62,11 +68,22 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
     }
   }, [user]);
 
-  if (user && user.role !== 'superadmin') {
-    return null;
-  }
+  const [activeTab, setActiveTab] = useState<'mlops' | 'companies' | 'directory' | 'tickets'>(() =>
+    initialTab === 'companies' || initialTab === 'directory' || initialTab === 'tickets'
+      ? initialTab
+      : 'mlops'
+  );
 
-  const [activeTab, setActiveTab] = useState<'mlops' | 'companies' | 'directory' | 'tickets'>('mlops');
+  useEffect(() => {
+    if (
+      initialTab === 'mlops' ||
+      initialTab === 'companies' ||
+      initialTab === 'directory' ||
+      initialTab === 'tickets'
+    ) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [openTicketsCount, setOpenTicketsCount] = useState<number>(0);
 
   useEffect(() => {
@@ -86,6 +103,8 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
   const [applicationsList, setApplicationsList] = useState<Application[]>([]);
   const [vacanciesList, setVacanciesList] = useState<Vacancy[]>([]);
   const [expandedAdminIds, setExpandedAdminIds] = useState<Record<string, boolean>>({});
+  const [isDirectoryFiltersOpen, setIsDirectoryFiltersOpen] = useState(false);
+  const [expandedDirectoryUserId, setExpandedDirectoryUserId] = useState<string | null>(null);
 
   // Retrain simulation state
   const [isRetraining, setIsRetraining] = useState(false);
@@ -549,6 +568,10 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
       ? 'Usuarios Registrados'
       : 'Tickets de Soporte & Quejas';
 
+  if (user && user.role !== 'superadmin') {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
       <AppShell
@@ -607,7 +630,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                     }`}
                   />
                   <div className="relative z-10">
-                    <span className="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-300 block">
+                    <span className="text-xs font-bold uppercase text-slate-600 dark:text-slate-300 block">
                       Estado del Microservicio ML
                     </span>
                     <span
@@ -749,7 +772,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
                     {mlInfo?.accuracy ?? 0}%
                   </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
                     {mlInfo?.isRealModel ? 'Medido en conjunto de prueba' : 'Sin modelo entrenado'}
                   </span>
                 </TiltGlassCard>
@@ -759,7 +782,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
                     {mlInfo?.precision ?? 0}%
                   </span>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">
+                  <span className="text-xs text-slate-600 dark:text-slate-400 relative z-10">
                     Exactitud sobre positivos predichos
                   </span>
                 </TiltGlassCard>
@@ -769,7 +792,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
                     {mlInfo?.recall ?? 0}%
                   </span>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400 relative z-10">
+                  <span className="text-xs text-slate-600 dark:text-slate-400 relative z-10">
                     Sensibilidad de detección real
                   </span>
                 </TiltGlassCard>
@@ -779,7 +802,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                   <span className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1 block relative z-10">
                     {mlInfo?.f1Score ?? 0}%
                   </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 font-bold relative z-10">
                     Criterio de selección de modelo
                   </span>
                 </TiltGlassCard>
@@ -798,14 +821,14 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                         Criterio real: {mlInfo.rawMetrics.selection_criterion || 'Mayor promedio F1 en validación cruzada'}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold">
                       Modelo ganador: {mlInfo.rawMetrics.selected_model || mlInfo.algorithm}
                     </span>
                   </div>
 
                   <div className="overflow-x-auto relative z-10">
                     <table className="w-full text-left text-xs">
-                      <thead className="border-b border-slate-200/70 dark:border-white/10 text-[10px] uppercase font-black text-slate-500 dark:text-slate-400">
+                      <thead className="border-b border-slate-200/70 dark:border-white/10 text-xs uppercase font-black text-slate-500 dark:text-slate-400">
                         <tr>
                           <th className="py-2.5 pr-4">Modelo</th>
                           <th className="py-2.5 px-3">CV F1 (5-Fold)</th>
@@ -831,7 +854,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                               <td className="py-2.5 pr-4 font-sans font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                                 <span>{modelKey.replace(/_/g, ' ')}</span>
                                 {isSelected && (
-                                  <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] uppercase font-black">
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-xs uppercase font-black">
                                     Activo
                                   </span>
                                 )}
@@ -1053,17 +1076,17 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                             </div>
                             <div>
                               {isPending && (
-                                <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-bold border border-amber-300 dark:border-amber-700">
+                                <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-bold border border-amber-300 dark:border-amber-700">
                                   Pendiente de Aprobación
                                 </span>
                               )}
                               {isActive && (
-                                <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold border border-emerald-200 dark:border-emerald-800">
+                                <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800">
                                   Empresa Activa
                                 </span>
                               )}
                               {isSuspended && (
-                                <span className="px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 text-[10px] font-bold border border-rose-200 dark:border-rose-800">
+                                <span className="px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 text-xs font-bold border border-rose-200 dark:border-rose-800">
                                   Suspendida
                                 </span>
                               )}
@@ -1110,7 +1133,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
 
                           {/* Plazo de desactivación automática (Superadmin) */}
                           <div className="pt-2 border-t border-[#c8b193]/40 dark:border-[#4d3c2e]/40 space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400">
                               <span>Plazo de vigencia (opcional):</span>
                               {(comp as any).activaHasta && (
                                 <span className="text-amber-700 dark:text-amber-400 font-mono">
@@ -1144,7 +1167,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                                         : null)
                                   )
                                 }
-                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shrink-0"
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shrink-0"
                               >
                                 Fijar
                               </button>
@@ -1155,7 +1178,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                                     setDeadlineDrafts((prev) => ({ ...prev, [comp.id]: '' }));
                                     handleSetCompanyDeadline(comp.id, comp.nombre, null);
                                   }}
-                                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
+                                  className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
                                   title="Quitar plazo"
                                 >
                                   ✕
@@ -1237,51 +1260,186 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
               </div>
 
               {/* Filters Bar */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre o correo..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                  />
+              <div className="space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre o correo..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full min-h-[42px] pl-9 pr-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsDirectoryFiltersOpen((prev) => !prev)}
+                    className="sm:hidden inline-flex items-center justify-between gap-2 min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 cursor-pointer"
+                    aria-expanded={isDirectoryFiltersOpen}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <SlidersHorizontal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Filtros (Rol / Empresa)</span>
+                    </span>
+                    {isDirectoryFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
                 </div>
 
-                <div>
-                  <select
-                    value={selectedRoleFilter}
-                    onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-semibold"
-                  >
-                    <option value="all">Todos los Roles</option>
-                    <option value="superadmin">Superadmin Global</option>
-                    <option value="admin">Admin Empresa (Local)</option>
-                    <option value="rrhh">Recursos Humanos (RRHH)</option>
-                    <option value="candidato">Candidatos</option>
-                  </select>
-                </div>
+                <div className={`${isDirectoryFiltersOpen ? 'grid' : 'hidden sm:grid'} grid-cols-1 sm:grid-cols-2 gap-3`}>
+                  <div>
+                    <select
+                      value={selectedRoleFilter}
+                      onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                      className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-semibold"
+                    >
+                      <option value="all">Todos los Roles</option>
+                      <option value="superadmin">Superadmin Global</option>
+                      <option value="admin">Admin Empresa (Local)</option>
+                      <option value="rrhh">Recursos Humanos (RRHH)</option>
+                      <option value="candidato">Candidatos</option>
+                    </select>
+                  </div>
 
-                <div>
-                  <select
-                    value={selectedCompanyFilter}
-                    onChange={(e) => setSelectedCompanyFilter(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-semibold"
-                  >
-                    <option value="all">Todas las Empresas</option>
-                    {companiesList.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <select
+                      value={selectedCompanyFilter}
+                      onChange={(e) => setSelectedCompanyFilter(e.target.value)}
+                      className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-semibold"
+                    >
+                      <option value="all">Todas las Empresas</option>
+                      {companiesList.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Table of Users (Glassmorphism surface revealing ambient particles) */}
-            <div className="w-full overflow-x-auto bg-white/55 dark:bg-[#0B0E14]/45 backdrop-blur-xl">
+            {/* Mobile Stacked Cards (md:hidden) */}
+            <div className="md:hidden p-4 space-y-3 bg-white/45 dark:bg-[#0B0E14]/45">
+              {filteredUsers.map((usr) => {
+                const userCompanyInfo = resolveUserCompanyInfo(usr);
+                const userCompany = userCompanyInfo.name;
+                const isSelf = (usr.email || '').toLowerCase().trim() === (user?.email || '').toLowerCase().trim();
+                const isCompanyAdmin = usr.role === 'admin';
+                const isDetailsOpen = expandedDirectoryUserId === usr.id;
+                const analytics = isCompanyAdmin ? getCompanyAnalytics(userCompanyInfo.id, userCompany) : null;
+
+                return (
+                  <div
+                    key={usr.id}
+                    className="rounded-2xl border border-[#c8b193]/60 dark:border-white/15 bg-white/80 dark:bg-slate-900/75 p-4 space-y-3 shadow-xs"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          {usr.avatar || usr.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{usr.name}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 font-mono truncate">{usr.email}</p>
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold border ${
+                          usr.role === 'superadmin'
+                            ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border-purple-300'
+                            : usr.role === 'admin'
+                            ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300'
+                            : usr.role === 'rrhh'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300'
+                            : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300'
+                        }`}
+                      >
+                        {usr.role === 'superadmin'
+                          ? 'Admin Global'
+                          : usr.role === 'admin'
+                          ? 'Admin Empresa'
+                          : usr.role === 'rrhh'
+                          ? 'RRHH'
+                          : 'Candidato'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-300 truncate">
+                        {userCompany ? `Empresa: ${userCompany}` : 'Ecosistema Global'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedDirectoryUserId(isDetailsOpen ? null : usr.id)}
+                        className="inline-flex items-center gap-1.5 min-h-[42px] px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 cursor-pointer shrink-0"
+                        aria-expanded={isDetailsOpen}
+                      >
+                        <span>{isDetailsOpen ? 'Ocultar detalles' : 'Ver detalles'}</span>
+                        {isDetailsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    {isDetailsOpen && (
+                      <div className="pt-3 border-t border-slate-200/70 dark:border-white/10 space-y-3 text-xs">
+                        <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-300">
+                          <div>
+                            <span className="font-bold block text-slate-500 dark:text-slate-400">Teléfono</span>
+                            <span className="font-mono">{usr.phone || 'No registrado'}</span>
+                          </div>
+                          <div>
+                            <span className="font-bold block text-slate-500 dark:text-slate-400">Fecha de Alta</span>
+                            <span>{new Date(usr.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+
+                        {analytics && (
+                          <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] border border-slate-200/70 dark:border-white/10 space-y-1.5">
+                            <p className="font-bold text-slate-800 dark:text-slate-100">
+                              Estadísticas de {analytics.companyName}
+                            </p>
+                            <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+                              <span>Postulaciones: <strong>{analytics.companyApplicationsCount}</strong></span>
+                              <span>RRHH: <strong>{analytics.companyHRCount}</strong></span>
+                              <span>Contratados: <strong>{analytics.companyHiredCount}</strong></span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewingUserId(usr.id)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold border bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver perfil</span>
+                          </button>
+
+                          {!isSelf && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserToDelete(usr);
+                                setIsDeleteUserModalOpen(true);
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold text-rose-700 dark:text-white bg-rose-50 hover:bg-rose-100 dark:bg-rose-600 dark:hover:bg-rose-500 border border-rose-300 dark:border-rose-500 cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span>Eliminar</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Table of Users (Desktop md+) */}
+            <div className="hidden md:block w-full overflow-x-auto bg-white/55 dark:bg-[#0B0E14]/45 backdrop-blur-xl">
               <table className="w-full min-w-[820px] text-left text-xs">
                 <thead className="bg-[#fcfaf6]/70 dark:bg-white/[0.04] backdrop-blur-md border-b border-[#c8b193]/60 dark:border-white/10 text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                   <tr>
@@ -1343,7 +1501,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                                 <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                 <span>{userCompany}</span>
                                 {usr.role === 'candidato' && (
-                                  <span className="ml-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                                  <span className="ml-1 text-xs font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
                                     Contratado
                                   </span>
                                 )}
@@ -1354,7 +1512,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                           </td>
                           <td className="px-6 py-4">
                             <span
-                              className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                              className={`inline-block px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
                                 usr.role === 'superadmin'
                                   ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border-purple-300'
                                   : usr.role === 'admin'
@@ -1412,7 +1570,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                               )}
 
                               {isSelf ? (
-                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 italic px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-md">
+                                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 italic px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-md">
                                   Tú (Superadmin)
                                 </span>
                               ) : (
@@ -1550,7 +1708,7 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-100">
                                           Resumen Operativo · {analytics.companyName}
                                         </span>
-                                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-300">
+                                        <span className="text-xs font-mono text-slate-500 dark:text-slate-300">
                                           Admin: {usr.name}
                                         </span>
                                       </div>
@@ -1565,11 +1723,11 @@ export const GlobalAdminDashboardPage: React.FC<{ onNavigate: (view: string) => 
                                         </div>
                                         {analytics.companyHRWorkers.length > 0 && (
                                           <div className="pt-2 border-t border-slate-200/60 dark:border-white/10 flex flex-wrap items-center gap-1.5">
-                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mr-1">Equipo RRHH:</span>
+                                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1">Equipo RRHH:</span>
                                             {analytics.companyHRWorkers.map((hr) => (
                                               <span
                                                 key={hr.id}
-                                                className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 backdrop-blur-sm"
+                                                className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 backdrop-blur-sm"
                                               >
                                                 {hr.name}
                                               </span>

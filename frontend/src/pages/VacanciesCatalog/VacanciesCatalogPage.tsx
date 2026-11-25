@@ -4,11 +4,14 @@ import { useAuth } from '@/context/AuthContext';
 import { vacanciesService } from '@/services/vacancies.service';
 import { empresaService } from '@/services/empresa.service';
 import { Navbar } from '@/components/layout/Navbar';
+import { AppShell } from '@/components/layout/AppShell';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { CompanyPublicProfileModal } from '@/components/company/CompanyPublicProfileModal';
+import { getRoleSidebarConfig } from '@/config/roleNavigation';
 import {
+  ArrowLeft,
   Search,
   MapPin,
   Building2,
@@ -19,10 +22,11 @@ import {
   CheckCircle2,
   ShieldCheck,
   Briefcase,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface VacanciesCatalogPageProps {
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, initialTab?: string) => void;
   onSelectVacancy: (vacancy: Vacancy) => void;
 }
 
@@ -37,12 +41,13 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
   onNavigate,
   onSelectVacancy,
 }) => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [companies, setCompanies] = useState<Empresa[]>([]);
   const [search, setSearch] = useState('');
   const [workModeFilter, setWorkModeFilter] = useState('all');
   const [companyFilter, setCompanyFilter] = useState('all');
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [selectedModalVacancy, setSelectedModalVacancy] = useState<Vacancy | null>(null);
   const [viewCompanyProfile, setViewCompanyProfile] = useState<{ id?: string; name?: string } | null>(null);
   const [slideState, setSlideState] = useState<{
@@ -52,15 +57,47 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
   }>({ current: 0, previous: null, tick: 0 });
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setSlideState((prev) => ({
-        current: (prev.current + 1) % HERO_SLIDES.length,
-        previous: prev.current,
-        tick: prev.tick + 1,
-      }));
-    }, 5500);
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
 
-    return () => window.clearInterval(interval);
+    let interval: number | null = null;
+
+    const startSlideshow = () => {
+      if (interval !== null || (typeof document !== 'undefined' && document.hidden)) return;
+      interval = window.setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        setSlideState((prev) => ({
+          current: (prev.current + 1) % HERO_SLIDES.length,
+          previous: prev.current,
+          tick: prev.tick + 1,
+        }));
+      }, 5500);
+    };
+
+    const stopSlideshow = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopSlideshow();
+      } else {
+        startSlideshow();
+      }
+    };
+
+    startSlideshow();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      stopSlideshow();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   useEffect(() => {
@@ -85,13 +122,14 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
     return true;
   });
 
-  return (
-    <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
-      <Navbar onNavigate={onNavigate} currentView="vacancies" />
+  const activeFiltersCount = (companyFilter !== 'all' ? 1 : 0) + (workModeFilter !== 'all' ? 1 : 0);
+  const roleNav = isAuthenticated ? getRoleSidebarConfig(user, { vacanciesCount: vacancies.length }) : null;
 
+  const catalogBody = (
+    <>
       {/* Glassmorphic Header & Search Ledger with Automatic Left-to-Right Sliding Background */}
-      <section className="relative overflow-hidden border-b border-[#777873]/25 dark:border-[#F1F2EC]/10 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 slide-left-item">
-        {/* Sliding Photo Carousel Background (no manual controls, left -> right continuous flow) */}
+      <section className="relative overflow-hidden border-b border-[#777873]/25 dark:border-[#F1F2EC]/10 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 slide-left-item">
+        {/* Sliding Photo Carousel Background (paused when tab hidden) */}
         <div className="absolute inset-0 z-0 pointer-events-none select-none overflow-hidden" aria-hidden="true">
           {slideState.previous !== null && (
             <img
@@ -109,30 +147,29 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
               slideState.tick > 0 ? 'animate-hero-slide-in' : ''
             }`}
           />
-          {/* Atmospheric Scrim Layer preserving readability in both light and dark modes */}
           <div className="absolute inset-0 bg-gradient-to-r from-[#F1F2EC]/90 via-[#F1F2EC]/74 to-[#F1F2EC]/86 dark:from-[#090A0C]/90 dark:via-[#090A0C]/72 dark:to-[#090A0C]/86 backdrop-blur-[2px]" />
         </div>
 
-        <div className="relative z-10 max-w-7xl 2xl:max-w-[1560px] mx-auto space-y-6">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-            <div className="space-y-3 max-w-3xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#090A0C]/80 dark:bg-[#F1F2EC]/8 text-[#C8FF45] text-[11px] font-mono-tabular font-semibold border border-[#C8FF45]/35 uppercase tracking-wider backdrop-blur-md">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#C8FF45]" />
-                <span>CATÁLOGO DE CONVOCATORIAS · EVALUACIÓN ÉTICA SIN SESGOS</span>
+        <div className="relative z-10 max-w-[1680px] mx-auto space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+            <div className="space-y-2.5 max-w-3xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#090A0C]/80 dark:bg-[#F1F2EC]/8 text-[#C8FF45] text-xs font-mono-tabular font-semibold border border-[#C8FF45]/35 uppercase tracking-wider backdrop-blur-md">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#C8FF45] shrink-0" />
+                <span className="truncate">CATÁLOGO DE CONVOCATORIAS</span>
               </div>
 
-              <h1 className="font-heading text-3xl sm:text-4xl lg:text-[40px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-[1.12]">
+              <h1 className="font-heading text-2xl sm:text-4xl lg:text-[40px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-[1.12]">
                 Expedientes de Convocatorias Abiertas
               </h1>
-              <p className="text-xs sm:text-sm text-[#777873] max-w-2xl leading-relaxed">
+              <p className="hidden sm:block text-sm text-[#777873] max-w-2xl leading-relaxed">
                 Explora las posiciones activas de empresas afiliadas a <strong className="text-[#090A0C] dark:text-[#F1F2EC] font-semibold">PlataformaML</strong>. Cada postulación es analizada objetivamente según tus competencias técnicas y trayectoria verificable.
               </p>
             </div>
 
             {/* Summary Ledger Counter */}
-            <div className="flex items-center gap-5 px-5 py-3.5 rounded-2xl glass-panel shrink-0 self-start lg:self-end">
+            <div className="flex items-center gap-5 px-5 py-3 rounded-2xl glass-panel shrink-0 self-start lg:self-end">
               <div>
-                <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#777873] block">
+                <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873] block">
                   CONVOCATORIAS
                 </span>
                 <span className="text-2xl font-mono-tabular font-bold text-[#090A0C] dark:text-[#F1F2EC]">
@@ -141,7 +178,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
               </div>
               <div className="w-px h-8 bg-[#777873]/30" />
               <div>
-                <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#777873] block">
+                <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873] block">
                   EMPRESAS
                 </span>
                 <span className="text-2xl font-mono-tabular font-bold text-[#4C6FFF] dark:text-[#C8FF45]">
@@ -151,68 +188,83 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
             </div>
           </div>
 
-          {/* Search & Filter Bar */}
+          {/* Search & Progressive-Disclosure Filter Bar */}
           <div className="p-2.5 rounded-2xl glass-panel flex flex-col sm:flex-row gap-2.5">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#777873] absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Buscar por cargo, departamento, empresa o habilidad (Python, SQL, React...)"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-[#F1F2EC]/80 dark:bg-[#090A0C]/80 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none transition-all focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
-              />
+            <div className="flex items-center gap-2 flex-1">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-[#777873] absolute left-3.5 top-3.5" />
+                <input
+                  type="text"
+                  placeholder="Buscar por cargo, área, empresa o habilidad..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="min-h-[42px] w-full pl-10 pr-4 py-2 text-sm bg-[#F1F2EC]/85 dark:bg-[#090A0C]/85 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none transition-[border-color,box-shadow] focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileFiltersOpen((prev) => !prev)}
+                className="sm:hidden min-h-[42px] px-3.5 rounded-xl bg-[#F1F2EC]/90 dark:bg-[#090A0C]/85 border border-[#777873]/35 text-xs font-bold text-[#090A0C] dark:text-[#F1F2EC] inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                aria-expanded={isMobileFiltersOpen}
+              >
+                <SlidersHorizontal className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45]" />
+                <span>Filtros</span>
+                {activeFiltersCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-[#C8FF45] text-[#090A0C] text-xs font-black leading-none">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </button>
             </div>
 
-            <select
-              value={companyFilter}
-              onChange={(e) => setCompanyFilter(e.target.value)}
-              className="text-xs font-semibold px-3.5 py-2 bg-[#F1F2EC]/80 dark:bg-[#090A0C]/80 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none cursor-pointer focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
-            >
-              <option value="all">Todas las empresas</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
+            <div className={`${isMobileFiltersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-2.5`}>
+              <select
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                className="min-h-[42px] text-xs sm:text-sm font-semibold px-3.5 py-2 bg-[#F1F2EC]/85 dark:bg-[#090A0C]/85 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none cursor-pointer focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
+              >
+                <option value="all">Todas las empresas</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
 
-            <select
-              value={workModeFilter}
-              onChange={(e) => setWorkModeFilter(e.target.value)}
-              className="text-xs font-semibold px-3.5 py-2 bg-[#F1F2EC]/80 dark:bg-[#090A0C]/80 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none cursor-pointer focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
-            >
-              <option value="all">Todas las modalidades</option>
-              <option value="Híbrido">Híbrido</option>
-              <option value="Presencial">Presencial</option>
-              <option value="Remoto">Remoto</option>
-            </select>
+              <select
+                value={workModeFilter}
+                onChange={(e) => setWorkModeFilter(e.target.value)}
+                className="min-h-[42px] text-xs sm:text-sm font-semibold px-3.5 py-2 bg-[#F1F2EC]/85 dark:bg-[#090A0C]/85 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 rounded-xl outline-none cursor-pointer focus:border-[#4C6FFF] dark:focus:border-[#C8FF45]"
+              >
+                <option value="all">Todas las modalidades</option>
+                <option value="Híbrido">Híbrido</option>
+                <option value="Presencial">Presencial</option>
+                <option value="Remoto">Remoto</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>
 
       {/* List of Vacancies as Archival Manila Expediente Folders */}
-      <main className="max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex-1 space-y-6">
-        <div className="flex flex-wrap justify-between items-center gap-2 text-xs text-[#777873]">
+      <main className="max-w-[1680px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1 space-y-6">
+        <div className="flex flex-wrap justify-between items-center gap-2 text-xs sm:text-sm text-[#777873]">
           <span className="font-medium">
             Mostrando <strong className="font-mono-tabular text-[#090A0C] dark:text-[#F1F2EC]">{filtered.length}</strong> expedientes de convocatorias activas
           </span>
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline">¿Representas a una organización?</span>
-            <button
-              type="button"
-              onClick={() => {
-                if (user?.role === 'admin' || user?.role === 'administrador' || user?.role === 'rrhh') {
-                  onNavigate('hr-dashboard');
-                } else {
-                  onNavigate('login');
-                }
-              }}
-              className="text-[#4C6FFF] dark:text-[#C8FF45] font-semibold hover:underline cursor-pointer"
-            >
-              Gestionar convocatorias →
-            </button>
-          </div>
+          {!isAuthenticated && (
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline">¿Representas a una organización?</span>
+              <button
+                type="button"
+                onClick={() => onNavigate('login')}
+                className="text-[#4C6FFF] dark:text-[#C8FF45] font-semibold hover:underline cursor-pointer"
+              >
+                Gestionar convocatorias →
+              </button>
+            </div>
+          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -223,6 +275,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
             <Button
               variant="outline"
               size="sm"
+              className="min-h-[42px]"
               onClick={() => {
                 setSearch('');
                 setCompanyFilter('all');
@@ -238,7 +291,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
               <div
                 key={vac.id}
                 onClick={() => setSelectedModalVacancy(vac)}
-                className="relative group transition-all duration-200 manila-folder-perspective cursor-pointer flex flex-col"
+                className="relative group transition-transform duration-200 manila-folder-perspective cursor-pointer flex flex-col"
               >
                 {/* Manila Folder Upper-Left Identifier Tab + 3D Back Cover Lip */}
                 <div className="flex items-end justify-start pl-0 pr-3">
@@ -252,14 +305,14 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                       });
                     }}
                     title="Ver perfil de la empresa"
-                    className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-[11px] font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none hover:bg-[#DDD0B8] dark:hover:bg-[#332920] transition-colors"
+                    className="manila-folder-tab-3d relative z-10 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg bg-[#E5D6BE] dark:bg-[#29211A] border-t border-x border-[#C8B496] dark:border-[#46372B] text-xs font-bold text-[#3A2818] dark:text-[#EBDCC8] cursor-pointer select-none hover:bg-[#DDD0B8] dark:hover:bg-[#332920] transition-colors"
                   >
                     <Folder className="w-3.5 h-3.5 text-[#7D5634] dark:text-[#C4A482]" />
-                    <span className="truncate max-w-[170px] sm:max-w-[220px] underline decoration-dotted underline-offset-2">
+                    <span className="truncate max-w-[160px] sm:max-w-[220px] underline decoration-dotted underline-offset-2">
                       {vac.empresaNombre || 'PlataformaML Corporativo'}
                     </span>
                     <span className="text-[#9C7E5E] dark:text-[#7D654F]">·</span>
-                    <span className="uppercase text-[10px] font-mono-tabular tracking-wider text-[#6E5236] dark:text-[#CBB399]">
+                    <span className="uppercase text-xs font-mono-tabular tracking-wider text-[#6E5236] dark:text-[#CBB399]">
                       {vac.department}
                     </span>
                   </button>
@@ -270,7 +323,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                 </div>
 
                 {/* Archivo Cerrado: solo portada y resumen de responsabilidades */}
-                <div className="manila-folder-body-3d flex-1 rounded-xl rounded-tl-none p-5 sm:p-6 relative overflow-hidden flex flex-col justify-between gap-4 group-hover:ring-1 group-hover:ring-[#0B5D46]/40 dark:group-hover:ring-[#C8FF45]/40 transition-all">
+                <div className="manila-folder-body-3d flex-1 rounded-xl rounded-tl-none p-5 sm:p-6 relative overflow-hidden flex flex-col justify-between gap-4 group-hover:ring-1 group-hover:ring-[#0B5D46]/40 dark:group-hover:ring-[#C8FF45]/40 transition-shadow">
                   <div
                     aria-hidden="true"
                     className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DFCBB0]/80 via-[#F4E7D2]/90 to-[#D4BE9E]/80 dark:from-[#32271E] dark:via-[#3E3025] dark:to-[#271E17]"
@@ -278,14 +331,14 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
 
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
                         {vac.workMode}
                       </span>
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#FCFBF8] dark:bg-[#141923] text-[#4A3520] dark:text-[#DEC9A7] border border-[#D5C3A5] dark:border-[#3D3024]">
                         {vac.type}
                       </span>
                       {vac.openings && (
-                        <span className="text-[11px] font-mono-tabular font-semibold px-2.5 py-0.5 rounded-md bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/70">
+                        <span className="text-xs font-mono-tabular font-semibold px-2.5 py-0.5 rounded-md bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800/70">
                           {vac.openings} {vac.openings === 1 ? 'plaza' : 'plazas'}
                         </span>
                       )}
@@ -295,32 +348,32 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                       <h3 className="text-lg sm:text-xl font-bold text-[#261A0F] dark:text-[#F8EEE0] tracking-tight group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] transition-colors">
                         {vac.title}
                       </h3>
-                      <p className="text-xs text-[#664C34] dark:text-[#BAA085] flex items-center gap-2 mt-1">
+                      <p className="text-xs sm:text-sm text-[#664C34] dark:text-[#BAA085] flex items-center gap-2 mt-1">
                         <MapPin className="w-3.5 h-3.5 text-[#85613C] dark:text-[#C4A482] shrink-0" />
                         <span className="truncate">{vac.location}</span>
                         <span>·</span>
-                        <span className="font-mono-tabular text-[11px] shrink-0">
+                        <span className="font-mono-tabular text-xs shrink-0">
                           EXP-{(vac.id || '01').slice(0, 6).toUpperCase()}
                         </span>
                       </p>
                     </div>
 
                     <div className="pt-1 border-t border-[#D5C3A5]/70 dark:border-[#3D3024]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D5634] dark:text-[#C4A482] block mb-1">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#7D5634] dark:text-[#C4A482] block mb-1">
                         Resumen de Responsabilidades
                       </span>
-                      <p className="text-xs text-[#4A3520] dark:text-[#D5C3AA] line-clamp-3 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-[#4A3520] dark:text-[#D5C3AA] line-clamp-3 leading-relaxed">
                         {vac.description}
                       </p>
                     </div>
                   </div>
 
                   <div className="pt-2 flex items-center justify-between gap-2 text-xs">
-                    <span className="text-[11px] text-[#7D5634] dark:text-[#BAA085] font-medium inline-flex items-center gap-1.5">
+                    <span className="text-xs text-[#7D5634] dark:text-[#BAA085] font-medium inline-flex items-center gap-1.5">
                       <Paperclip className="w-3.5 h-3.5" />
                       <span>Expediente cerrado</span>
                     </span>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#E2D2B8] group-hover:bg-[#0B5D46] group-hover:text-white dark:bg-[#2F251D] dark:group-hover:bg-[#C8FF45] dark:group-hover:text-[#090A0C] text-[#3A2818] dark:text-[#F0DFC8] border border-[#C4AE8D] dark:border-[#4A3B2E] font-bold text-xs transition-colors">
+                    <span className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#E2D2B8] group-hover:bg-[#0B5D46] group-hover:text-white dark:bg-[#2F251D] dark:group-hover:bg-[#C8FF45] dark:group-hover:text-[#090A0C] text-[#3A2818] dark:text-[#F0DFC8] border border-[#C4AE8D] dark:border-[#4A3B2E] font-bold text-xs transition-colors">
                       <FolderOpen className="w-3.5 h-3.5" />
                       <span>Abrir convocatoria</span>
                     </span>
@@ -347,7 +400,6 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
       >
         {selectedModalVacancy && (
           <div className="space-y-5">
-            {/* Metadatos del cargo */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <button
                 type="button"
@@ -357,12 +409,12 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                     name: selectedModalVacancy.empresaNombre || selectedModalVacancy.companyName || 'PlataformaML Corporativo',
                   })
                 }
-                className="press inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0B5D46]/12 hover:bg-[#0B5D46]/20 dark:bg-[#C8FF45]/12 dark:hover:bg-[#C8FF45]/20 text-[#0B5D46] dark:text-[#C8FF45] border border-[#0B5D46]/30 dark:border-[#C8FF45]/35 font-bold cursor-pointer"
+                className="press min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#0B5D46]/12 hover:bg-[#0B5D46]/20 dark:bg-[#C8FF45]/12 dark:hover:bg-[#C8FF45]/20 text-[#0B5D46] dark:text-[#C8FF45] border border-[#0B5D46]/30 dark:border-[#C8FF45]/35 font-bold cursor-pointer"
                 title="Haz clic para ver el perfil de la empresa"
               >
                 <Building2 className="w-3.5 h-3.5 shrink-0" />
                 <span>{selectedModalVacancy.empresaNombre || 'PlataformaML Corporativo'}</span>
-                <span className="text-[10px] underline ml-0.5">Ver perfil</span>
+                <span className="text-xs underline ml-0.5">Ver perfil</span>
               </button>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EFE5D4] dark:bg-slate-800 text-[#3A2818] dark:text-[#F1F2EC] border border-[#C8B193] dark:border-slate-700 font-semibold">
                 <MapPin className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
@@ -384,10 +436,9 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
               )}
             </div>
 
-            {/* Hoja completa del expediente */}
-            <div className="p-5 rounded-xl bg-white dark:bg-slate-900/90 border border-[#DED7C8] dark:border-slate-800 space-y-4 text-xs sm:text-sm leading-relaxed">
+            <div className="p-5 rounded-xl bg-white dark:bg-slate-900/90 border border-[#DED7C8] dark:border-slate-800 space-y-4 text-sm leading-relaxed">
               <div>
-                <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
+                <h4 className="font-bold uppercase tracking-wider text-xs text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
                   Resumen de Responsabilidades y Descripción
                 </h4>
                 <p className="text-slate-700 dark:text-slate-200 whitespace-pre-line leading-relaxed">
@@ -397,7 +448,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
 
               {selectedModalVacancy.requiredSkills && selectedModalVacancy.requiredSkills.length > 0 && (
                 <div className="pt-3 border-t border-[#E5DEC9] dark:border-slate-800">
-                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-2">
+                  <h4 className="font-bold uppercase tracking-wider text-xs text-[#7D5634] dark:text-[#C8FF45] mb-2">
                     Competencias Evaluadas por el Modelo IA
                   </h4>
                   <div className="flex flex-wrap gap-1.5">
@@ -415,10 +466,10 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
 
               {selectedModalVacancy.requirements && selectedModalVacancy.requirements.length > 0 && (
                 <div className="pt-3 border-t border-[#E5DEC9] dark:border-slate-800">
-                  <h4 className="font-bold uppercase tracking-wider text-[11px] text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
+                  <h4 className="font-bold uppercase tracking-wider text-xs text-[#7D5634] dark:text-[#C8FF45] mb-1.5">
                     Requisitos Mínimos
                   </h4>
-                  <ul className="text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside text-xs sm:text-sm">
+                  <ul className="text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside text-sm">
                     {selectedModalVacancy.requirements.map((req, rIdx) => (
                       <li key={rIdx}>{req}</li>
                     ))}
@@ -427,9 +478,8 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
               )}
             </div>
 
-            {/* Pie del modal con botón prominente de Postularse */}
             <div className="pt-3 border-t border-[#C8B496]/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+              <div className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-[#0B5D46] dark:text-[#C8FF45] shrink-0" />
                 <span>Evaluación ética sin sesgos demográficos</span>
               </div>
@@ -439,6 +489,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="min-h-[42px]"
                   onClick={() => setSelectedModalVacancy(null)}
                 >
                   Cerrar
@@ -447,6 +498,7 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
                   type="button"
                   variant="primary"
                   size="md"
+                  className="min-h-[42px]"
                   rightIcon={<ChevronRight className="w-4 h-4" />}
                   onClick={() => {
                     const target = selectedModalVacancy;
@@ -462,7 +514,6 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
         )}
       </Modal>
 
-      {/* Modal público de perfil de empresa (solo lectura, accesible para cualquier persona) */}
       <CompanyPublicProfileModal
         isOpen={Boolean(viewCompanyProfile)}
         onClose={() => setViewCompanyProfile(null)}
@@ -471,6 +522,49 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
       />
 
       <Footer />
+    </>
+  );
+
+  if (isAuthenticated && roleNav) {
+    return (
+      <AppShell
+        sections={roleNav.sections}
+        activeId="external-vacancies"
+        onSelect={(id) => {
+          if (id === 'external-vacancies') return;
+          onNavigate(roleNav.dashboardView, id);
+        }}
+        brandSubtitle={roleNav.brandSubtitle}
+        crumbRoot={roleNav.crumbRoot}
+        title="Catálogo de Convocatorias"
+        roleLabel={roleNav.roleLabel}
+        contextLabel={roleNav.contextLabel}
+        onLogout={() => {
+          logout();
+          onNavigate('login');
+        }}
+        onBrandClick={() => onNavigate('vacancies')}
+        topbarExtra={
+          <button
+            type="button"
+            onClick={() => onNavigate(roleNav.dashboardView)}
+            className="press min-h-[40px] px-3 py-1.5 rounded-xl bg-[#C8FF45] hover:bg-[#d5ff6b] text-[#090A0C] border border-[#84cc16] shadow-[0_3px_0_#3f6212] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">{roleNav.backButtonLabel}</span>
+            <span className="sm:hidden">Mi Panel</span>
+          </button>
+        }
+      >
+        {catalogBody}
+      </AppShell>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-transparent flex flex-col font-sans transition-colors">
+      <Navbar onNavigate={onNavigate} currentView="vacancies" />
+      {catalogBody}
     </div>
   );
 };

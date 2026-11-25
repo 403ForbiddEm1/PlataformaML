@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Application, Employee, Empresa, User, Vacancy } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -22,6 +22,11 @@ import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
 import { StackedMetricsBarChart } from '@/components/charts/StackedMetricsBarChart';
 import {
+  CompanyStatusDonutChart,
+  buildCompanyDonutSegments,
+  type DonutMode,
+} from '@/components/charts/CompanyStatusDonutChart';
+import {
   Building2,
   Users,
   Brain,
@@ -32,8 +37,11 @@ import {
   Briefcase,
   Folder,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Search,
   Filter,
+  SlidersHorizontal,
   CheckCircle2,
   Clock,
   Phone,
@@ -56,11 +64,42 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 
-export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
+type CompanyAdminTab = 'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile';
+
+const resolveCompanyAdminTab = (tab?: string): CompanyAdminTab => {
+  if (
+    tab === 'metrics' ||
+    tab === 'team' ||
+    tab === 'candidates' ||
+    tab === 'messages' ||
+    tab === 'templates' ||
+    tab === 'profile'
+  ) {
+    return tab;
+  }
+  return 'metrics';
+};
+
+export const CompanyAdminDashboardPage: React.FC<{
+  onNavigate: (view: string, initialTab?: string) => void;
+  initialTab?: string;
+}> = ({ onNavigate, initialTab }) => {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'metrics' | 'team' | 'candidates' | 'messages' | 'templates' | 'profile'>('metrics');
+  const [activeTab, setActiveTab] = useState<CompanyAdminTab>(() => resolveCompanyAdminTab(initialTab));
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(resolveCompanyAdminTab(initialTab));
+    }
+  }, [initialTab]);
+
+  const [donutMode, setDonutMode] = useState<DonutMode>('applicants');
+  const [hoveredDonutId, setHoveredDonutId] = useState<string | null>(null);
+  const [pinnedDonutId, setPinnedDonutId] = useState<string | null>(null);
+  const [isCandidateFiltersOpen, setIsCandidateFiltersOpen] = useState(false);
+  const [expandedCandidateCardId, setExpandedCandidateCardId] = useState<string | null>(null);
   const [profileDrawerApp, setProfileDrawerApp] = useState<Application | null>(null);
   const [focusChatAppId, setFocusChatAppId] = useState<string | undefined>(undefined);
 
@@ -242,6 +281,22 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
   useEffect(() => {
     loadCompanyData();
   }, [currentEmpresaId]);
+
+  const donutSegments = useMemo(
+    () =>
+      buildCompanyDonutSegments({
+        mode: donutMode,
+        vacancies: companyVacancies,
+        applications: companyApplications,
+        employees: hiredEmployees,
+      }),
+    [donutMode, companyVacancies, companyApplications, hiredEmployees]
+  );
+
+  const activeDonutSegment = useMemo(() => {
+    const activeId = hoveredDonutId ?? pinnedDonutId;
+    return activeId ? donutSegments.find((s) => s.id === activeId) ?? null : null;
+  }, [donutSegments, hoveredDonutId, pinnedDonutId]);
 
   const handleRegisterHR = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -448,13 +503,13 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
             <section className="w-full space-y-3.5 bg-transparent">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
                 <div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold mb-1.5 border border-emerald-500/30">
-                    <Brain className="w-3 h-3" /> Procesamiento Local con Machine Learning
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold mb-1.5 border border-emerald-500/30">
+                    <Brain className="w-3.5 h-3.5" /> Procesamiento Local con Machine Learning
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                     Rendimiento Algorítmico en {currentEmpresaNombre}
                   </h2>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 max-w-2xl">
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5 max-w-2xl">
                     Estadísticas exclusivas de los candidatos evaluados por la IA en tus convocatorias y el impacto en tu proceso de reclutamiento.
                   </p>
                 </div>
@@ -465,7 +520,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                 >
                   <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400 relative z-10" />
                   <div className="relative z-10">
-                    <span className="text-[9px] font-bold uppercase text-emerald-700 dark:text-emerald-300 block">Afinidad Media Local</span>
+                    <span className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-300 block">Afinidad Media Local</span>
                     <span className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400">{avgScore}% Concordancia</span>
                   </div>
                 </TiltGlassCard>
@@ -518,100 +573,47 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                     >
                       <Icon className="w-16 h-16" strokeWidth={1.6} />
                     </div>
-                    <span className="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 block relative z-10">
+                    <span className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400 block relative z-10">
                       {label}
                     </span>
                     <span className={`text-2xl font-black block leading-tight relative z-10 ${valueColor}`}>
                       {value}
                     </span>
-                    <p className={`text-[10px] relative z-10 ${subtextColor}`}>{subtext}</p>
+                    <p className={`text-xs relative z-10 ${subtextColor}`}>{subtext}</p>
                   </TiltGlassCard>
                 ))}
               </div>
             </section>
 
-            {/* Fila 30% / 70%: Convocatorias y Demanda de Talento + Estadística Apilada (70%) */}
-            <div className="w-full flex-1 grid grid-cols-1 lg:grid-cols-10 gap-4 sm:gap-5 items-stretch">
-              {/* Columna 1 (30%): Desglose por Convocatoria de la Empresa */}
-              <section className="lg:col-span-3 w-full rounded-2xl glass-panel p-4 sm:p-5 space-y-3 flex flex-col">
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Megaphone className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                    <span className="truncate">Convocatorias · {currentEmpresaNombre}</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                    Demanda y candidatos afines por cargo.
-                  </p>
-                </div>
+            {/* Fila 40% / 60%: Torta Interactiva por Convocatoria / Rol Activo + Resumen Detallado */}
+            <CompanyStatusDonutChart
+              mode={donutMode}
+              onModeChange={(nextMode) => {
+                setDonutMode(nextMode);
+                setPinnedDonutId(null);
+                setHoveredDonutId(null);
+              }}
+              segments={donutSegments}
+              hoveredSegmentId={hoveredDonutId}
+              pinnedSegmentId={pinnedDonutId}
+              onHoverSegment={setHoveredDonutId}
+              onTogglePinSegment={setPinnedDonutId}
+              companyName={currentEmpresaNombre}
+            />
 
-                {companyVacancies.length === 0 ? (
-                  <div className="flex-1 p-4 flex flex-col items-center justify-center text-center rounded-xl border border-dashed border-slate-300/80 dark:border-white/15 bg-white/30 dark:bg-white/[0.02] space-y-2">
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                      Aún no hay convocatorias emitidas para {currentEmpresaNombre}.
-                    </p>
-                    <Button
-                      size="sm"
-                      onClick={() => onNavigate('hr-dashboard')}
-                      className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold border border-amber-600 shadow-[0_3px_0_#92400e]"
-                    >
-                      + Emitir Convocatoria en Panel RRHH
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2.5 max-h-[250px] overflow-y-auto pr-1">
-                    {companyVacancies.map((vac) => {
-                      const appsForVac = companyApplications.filter((a) => a.vacancyId === vac.id);
-                      const preselectedForVac = appsForVac.filter(
-                        (a) => a.status === 'Preseleccionado' || a.status === 'Contratado'
-                      ).length;
-
-                      return (
-                        <TiltGlassCard
-                          key={vac.id}
-                          maxTiltDeg={2.5}
-                          className="p-3.5 rounded-xl space-y-2 flex flex-col justify-between"
-                        >
-                          <div className="relative z-10 space-y-1">
-                            <div className="flex items-center justify-between text-[11px] font-bold gap-2">
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 truncate">
-                                {vac.department}
-                              </span>
-                              <span className="text-slate-600 dark:text-slate-400 font-mono text-[10px] shrink-0">
-                                {vac.openings} {vac.openings === 1 ? 'plaza' : 'plazas'}
-                              </span>
-                            </div>
-                            <h4 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate">
-                              {vac.title}
-                            </h4>
-                            <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
-                              {vac.location} · {vac.workMode}
-                            </p>
-                          </div>
-
-                          <div className="relative z-10 pt-2 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between text-[11px]">
-                            <span className="text-slate-700 dark:text-slate-300 font-semibold">
-                              {appsForVac.length} postulaciones
-                            </span>
-                            <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                              {preselectedForVac} preseleccionados
-                            </span>
-                          </div>
-                        </TiltGlassCard>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              {/* Columna 2 (70%): Gráfica Apilada de Balance Local */}
-              <section className="lg:col-span-7 w-full flex flex-col">
-                <StackedMetricsBarChart
-                  vacancies={companyVacancies}
-                  applications={companyApplications}
-                  companyName={currentEmpresaNombre}
-                />
-              </section>
-            </div>
+            {/* Gráfica de Columnas Sincronizada: Nivel de Afinidad en Escalera + Calidad vs Plazas */}
+            <StackedMetricsBarChart
+              mode={donutMode}
+              segments={donutSegments}
+              activeSegment={activeDonutSegment}
+              vacancies={companyVacancies}
+              applications={companyApplications}
+              companyName={currentEmpresaNombre}
+              onClearSegment={() => {
+                setPinnedDonutId(null);
+                setHoveredDonutId(null);
+              }}
+            />
             </div>
           )}
 
@@ -718,7 +720,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                               )}
                               <div>
                                 <h4 className="font-black text-slate-900 dark:text-slate-100 text-base">{member.name}</h4>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                <span className={`text-xs font-bold uppercase tracking-wider ${
                                   member.role === 'admin'
                                     ? 'text-sky-700 dark:text-sky-400'
                                     : 'text-emerald-700 dark:text-emerald-400'
@@ -731,7 +733,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                             </div>
 
                             {isSelf ? (
-                              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300 bg-slate-200/70 dark:bg-white/10 px-2.5 py-1 rounded-lg">
+                              <span className="text-xs font-bold text-slate-500 dark:text-slate-300 bg-slate-200/70 dark:bg-white/10 px-2.5 py-1 rounded-lg">
                                 Tú (Admin)
                               </span>
                             ) : (
@@ -803,14 +805,14 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                               )}
                               <div>
                                 <h4 className="font-black text-slate-900 dark:text-slate-100 text-base">{emp.name}</h4>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                                <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
                                   {emp.role} · {emp.department}
                                 </span>
                               </div>
                             </div>
 
                             {isSelf ? (
-                              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300 bg-slate-200/70 dark:bg-white/10 px-2.5 py-1 rounded-lg">
+                              <span className="text-xs font-bold text-slate-500 dark:text-slate-300 bg-slate-200/70 dark:bg-white/10 px-2.5 py-1 rounded-lg">
                                 Tú (Admin)
                               </span>
                             ) : (
@@ -849,7 +851,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
 
                           <div className="relative z-10 pt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                             <span>Contratación: {new Date(emp.hiredDate).toLocaleDateString()}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold text-xs">
                               {emp.status}
                             </span>
                           </div>
@@ -948,23 +950,38 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
               </div>
 
               {/* Filters Bar */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    placeholder="Buscar candidato por nombre o correo..."
-                    value={candidateSearch}
-                    onChange={(e) => setCandidateSearch(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 placeholder:text-slate-500"
-                  />
+              <div className="space-y-3 pt-1">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Buscar candidato por nombre o correo..."
+                      value={candidateSearch}
+                      onChange={(e) => setCandidateSearch(e.target.value)}
+                      className="w-full min-h-[42px] pl-9 pr-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 placeholder:text-slate-500"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCandidateFiltersOpen((prev) => !prev)}
+                    className="sm:hidden inline-flex items-center justify-between gap-2 min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold bg-white/60 dark:bg-white/[0.06] border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 cursor-pointer"
+                    aria-expanded={isCandidateFiltersOpen}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <SlidersHorizontal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Filtros (Convocatoria)</span>
+                    </span>
+                    {isCandidateFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
                 </div>
 
-                <div>
+                <div className={`${isCandidateFiltersOpen ? 'block' : 'hidden sm:block'}`}>
                   <select
                     value={vacancyFilter}
                     onChange={(e) => setVacancyFilter(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 font-semibold"
+                    className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 font-semibold"
                   >
                     <option value="all" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Todas las Convocatorias de la Empresa</option>
                     {companyVacancies.map((v) => (
@@ -977,8 +994,130 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
               </div>
             </div>
 
-            {/* Table of Candidates */}
-            <TiltGlassCard maxTiltDeg={0.8} className="w-full rounded-2xl">
+            {/* Mobile Stacked Cards (md:hidden) */}
+            <div className="md:hidden space-y-3">
+              {filteredCandidates.map((app) => {
+                const scoreVal = typeof app.mlScore === 'number' ? app.mlScore : 0;
+                const isDetailsOpen = expandedCandidateCardId === app.id;
+                const isNotifyOpen = expandedNotifyAppId === app.id;
+
+                return (
+                  <TiltGlassCard key={app.id} maxTiltDeg={0} className="rounded-2xl p-4 space-y-3">
+                    <div className="relative z-10 flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setProfileDrawerApp(app)}
+                        className="flex items-center gap-3 text-left min-w-0 cursor-pointer"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          {app.candidateName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {app.candidateName}
+                          </p>
+                          <p className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">
+                            {app.vacancyTitle}
+                          </p>
+                        </div>
+                      </button>
+
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-black text-xs border ${
+                          scoreVal < 50
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                            : 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {scoreVal}%
+                      </span>
+                    </div>
+
+                    <div className="relative z-10 flex items-center justify-between gap-2">
+                      <span
+                        className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                          app.status === 'Preseleccionado' || app.status === 'Contratado'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                            : app.status === 'En revisión' || app.status === 'Entrevista'
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/35'
+                            : app.status === 'Recibida'
+                            ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/35'
+                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/35'
+                        }`}
+                      >
+                        {app.status}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCandidateCardId(isDetailsOpen ? null : app.id)}
+                        className="inline-flex items-center gap-1.5 min-h-[42px] px-3 py-1.5 rounded-xl text-xs font-bold bg-white/75 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                        aria-expanded={isDetailsOpen}
+                      >
+                        <span>{isDetailsOpen ? 'Ocultar detalles' : 'Ver detalles'}</span>
+                        {isDetailsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    {isDetailsOpen && (
+                      <div className="relative z-10 pt-3 border-t border-slate-200/60 dark:border-white/10 space-y-3 text-xs">
+                        <div className="space-y-1 text-slate-600 dark:text-slate-300">
+                          <p className="truncate"><strong className="text-slate-800 dark:text-slate-100">Correo:</strong> {app.candidateEmail}</p>
+                          <p className="font-mono"><strong className="font-sans text-slate-800 dark:text-slate-100">Contacto:</strong> {app.candidatePhone || '+1 (809) 000-0000'}</p>
+                          <p><strong className="text-slate-800 dark:text-slate-100">Postulación:</strong> {app.appliedDate}</p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setProfileDrawerApp(app)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold bg-white/80 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                          >
+                            <FileUser className="w-3.5 h-3.5" />
+                            <span>Ver Perfil</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedNotifyAppId(isNotifyOpen ? null : app.id)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 cursor-pointer"
+                          >
+                            <Megaphone className="w-3.5 h-3.5" />
+                            <span>Notificar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFocusChatAppId(app.id);
+                              setActiveTab('messages');
+                            }}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold bg-[#0B5D46] hover:bg-[#094B38] text-white dark:bg-[#C8FF45] dark:text-[#090A0C] cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Chatear</span>
+                          </button>
+                        </div>
+
+                        {isNotifyOpen && (
+                          <QuickNotifyRowBar
+                            application={app}
+                            defaultChannel={autoNotifyChannel}
+                            companyLogoUrl={companyLogoUrl}
+                            onSuccess={() => loadCompanyData()}
+                            onClose={() => setExpandedNotifyAppId(null)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </TiltGlassCard>
+                );
+              })}
+            </div>
+
+            {/* Table of Candidates (Desktop md+) */}
+            <TiltGlassCard maxTiltDeg={0.8} className="hidden md:block w-full rounded-2xl">
               <div className="relative z-10 w-full overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-xs">
                   <thead className="border-b border-slate-200/70 dark:border-white/10 text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
@@ -1045,7 +1184,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                         </td>
                         <td className="px-6 py-4">
                           <span
-                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                            className={`inline-block px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
                               app.status === 'Preseleccionado' || app.status === 'Contratado'
                                 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
                                 : app.status === 'En revisión' || app.status === 'Entrevista'
@@ -1153,7 +1292,7 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                     <div className="w-full h-full flex flex-col items-center justify-center text-[#E6B87A]/80 dark:text-[#C8FF45]/75 p-4 text-center">
                       <ImageIcon className="w-7 h-7 mb-1 opacity-80" />
                       <span className="text-xs font-bold">Portada Horizontal de la Empresa</span>
-                      <span className="text-[10px] opacity-75">Formato horizontal recomendado (1200 × 360 px)</span>
+                      <span className="text-xs opacity-75">Formato horizontal recomendado (1200 × 360 px)</span>
                     </div>
                   )}
 
@@ -1193,12 +1332,12 @@ export const CompanyAdminDashboardPage: React.FC<{ onNavigate: (view: string) =>
                         <span className="text-lg sm:text-xl font-black tracking-tight">
                           {(editNombre || currentEmpresaNombre || 'EM').slice(0, 2).toUpperCase()}
                         </span>
-                        <span className="text-[9px] font-mono-tabular uppercase text-[#E6B87A]">Logo 4x4</span>
+                        <span className="text-xs font-mono-tabular uppercase text-[#E6B87A]">Logo 4x4</span>
                       </div>
                     )}
 
                     <label
-                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold cursor-pointer gap-0.5"
+                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-xs font-bold cursor-pointer gap-0.5"
                       title="Subir logo cuadrado (4x4) de la empresa"
                     >
                       <Camera className="w-4 h-4 text-[#C8FF45]" />

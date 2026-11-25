@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -36,49 +36,62 @@ export const Input: React.FC<InputProps> = ({
         </label>
       )}
 
-      <div className="relative flex items-center group">
-        {leftIcon && (
-          <div className="absolute left-3.5 z-10 text-[#646661] dark:text-[#777873] group-focus-within:text-[#2563EB] dark:group-focus-within:text-[#C8FF45] pointer-events-none flex items-center transition-colors">
-            {leftIcon}
-          </div>
-        )}
-
-        <input
-          id={inputId}
-          type={isPassword ? (showPassword ? 'text' : 'password') : type}
-          className={twMerge(
-            clsx(
-              'w-full px-3.5 py-2.5 bg-[#F1F2EC]/88 dark:bg-[#090A0C]/80 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 dark:border-[#777873]/40 rounded-xl text-sm font-normal transition-[background-color,border-color,box-shadow,transform] duration-180 outline-none shadow-[inset_0_1px_2px_rgba(9,10,12,0.06)]',
-              'hover:border-[#777873]/70 dark:hover:border-[#F1F2EC]/30',
-              'placeholder:text-[#777873]',
-              'focus:bg-white dark:focus:bg-[#090A0C]/95 focus:border-[#4C6FFF] dark:focus:border-[#C8FF45] focus:ring-3 focus:ring-[#4C6FFF]/15 dark:focus:ring-[#C8FF45]/15 focus:translate-x-[1px]',
-              leftIcon && 'pl-10',
-              isPassword && 'pr-10',
-              error && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15',
-              className
-            )
+      <div className="flex flex-col">
+        <div className="relative flex items-center group">
+          {leftIcon && (
+            <div className="absolute left-3.5 z-10 text-[#646661] dark:text-[#777873] group-focus-within:text-[#2563EB] dark:group-focus-within:text-[#C8FF45] pointer-events-none flex items-center transition-colors">
+              {leftIcon}
+            </div>
           )}
-          {...props}
-        />
 
-        {isPassword && (
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3.5 z-10 text-[#646661] dark:text-[#777873] hover:text-[#090A0C] dark:hover:text-[#C8FF45] focus:outline-none p-1 transition-colors cursor-pointer"
-            tabIndex={-1}
-            aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+          <input
+            id={inputId}
+            type={isPassword ? (showPassword ? 'text' : 'password') : type}
+            className={twMerge(
+              clsx(
+                'w-full px-3.5 py-2.5 bg-[#F1F2EC]/88 dark:bg-[#090A0C]/80 text-[#090A0C] dark:text-[#F1F2EC] border border-[#777873]/35 dark:border-[#777873]/40 rounded-xl text-sm font-normal transition-[background-color,border-color,box-shadow,transform] duration-180 outline-none shadow-[inset_0_1px_2px_rgba(9,10,12,0.06)]',
+                'hover:border-[#777873]/70 dark:hover:border-[#F1F2EC]/30',
+                'placeholder:text-[#777873]',
+                'focus:bg-white dark:focus:bg-[#090A0C]/95 focus:border-[#4C6FFF] dark:focus:border-[#C8FF45] focus:ring-3 focus:ring-[#4C6FFF]/15 dark:focus:ring-[#C8FF45]/15 focus:translate-x-[1px]',
+                leftIcon && 'pl-10',
+                isPassword && 'pr-10',
+                error && 'rounded-b-none focus:translate-x-0!',
+                className
+              )
+            )}
+            {...props}
+          />
+
+          {isPassword && (
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3.5 z-10 text-[#646661] dark:text-[#777873] hover:text-[#090A0C] dark:hover:text-[#C8FF45] focus:outline-none p-1 transition-colors cursor-pointer"
+              tabIndex={-1}
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          )}
+        </div>
+
+        {error ? (
+          <div
+            role="alert"
+            className="w-full -mt-px px-3.5 py-1.5 rounded-b-xl bg-[#090A0C]/95 backdrop-blur-md border-x border-b border-rose-500/75 shadow-[0_6px_16px_rgba(0,0,0,0.45)] flex items-start gap-1.5 overflow-hidden"
           >
-            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        )}
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+            <p
+              title={error}
+              className="min-w-0 flex-1 text-xs text-rose-200 font-semibold leading-snug break-words line-clamp-2"
+            >
+              {error}
+            </p>
+          </div>
+        ) : helperText ? (
+          <p className="text-xs text-[#777873] mt-1">{helperText}</p>
+        ) : null}
       </div>
-
-      {error ? (
-        <p className="text-xs text-rose-500 font-medium">{error}</p>
-      ) : helperText ? (
-        <p className="text-xs text-[#777873]">{helperText}</p>
-      ) : null}
     </div>
   );
 };

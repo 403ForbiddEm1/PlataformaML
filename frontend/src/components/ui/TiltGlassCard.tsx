@@ -65,6 +65,9 @@ export const TiltGlassCard: React.FC<TiltGlassCardProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     onMouseMove?.(e);
+    if (typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      return;
+    }
     pointerRef.current.x = e.clientX;
     pointerRef.current.y = e.clientY;
     isActiveRef.current = true;

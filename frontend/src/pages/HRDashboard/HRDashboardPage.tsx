@@ -35,6 +35,8 @@ import {
   FileText,
   UserCheck,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Brain,
   ShieldCheck,
   Building2,
@@ -80,12 +82,33 @@ const parseCalendarDateMs = (raw?: string): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
-export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
+export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?: string) => void; initialTab?: string }> = ({
+  onNavigate,
+  initialTab,
+}) => {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
 
   // Active top tab: candidates (ranking), employees (plantilla), messages (chat), templates (plantillas)
-  const [activeTab, setActiveTab] = useState<'candidates' | 'employees' | 'messages' | 'templates'>('candidates');
+  const [activeTab, setActiveTab] = useState<'candidates' | 'employees' | 'messages' | 'templates'>(() =>
+    initialTab === 'employees' || initialTab === 'messages' || initialTab === 'templates'
+      ? initialTab
+      : 'candidates'
+  );
+
+  useEffect(() => {
+    if (
+      initialTab === 'candidates' ||
+      initialTab === 'employees' ||
+      initialTab === 'messages' ||
+      initialTab === 'templates'
+    ) {
+      setActiveTab(initialTab);
+      if (initialTab === 'candidates') {
+        setSelectedVacancyForRanking(null);
+      }
+    }
+  }, [initialTab]);
   const [profileDrawerApp, setProfileDrawerApp] = useState<Application | null>(null);
 
   const [applications, setApplications] = useState<Application[]>([]);
@@ -99,6 +122,8 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
   const [expandedNotifyAppId, setExpandedNotifyAppId] = useState<string | null>(null);
   const [autoNotifyChannel, setAutoNotifyChannel] = useState<NotifyChannel>('AMBOS');
   const [isBulkRejecting, setIsBulkRejecting] = useState(false);
+  const [isHrCandidateFiltersOpen, setIsHrCandidateFiltersOpen] = useState(false);
+  const [isHrEmployeeFiltersOpen, setIsHrEmployeeFiltersOpen] = useState(false);
 
   // Employees state (affiliated to RRHH company)
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -822,7 +847,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
             <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-[#F1F2EC]/6 border border-[#c8b193] dark:border-[#F1F2EC]/12 text-xs text-[#3a2818] dark:text-[#F1F2EC]">
               <Building2 className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#4C6FFF]" />
               <span className="font-semibold">{user?.empresaNombre || 'Empresa Afiliada'}</span>
-              <span className="px-1.5 py-0.5 rounded bg-[#3a2818] dark:bg-[#090A0C] text-[10px] font-mono-tabular text-[#EFE5D4] dark:text-[#C8FF45] font-semibold">
+              <span className="px-1.5 py-0.5 rounded bg-[#3a2818] dark:bg-[#090A0C] text-xs font-mono-tabular text-[#EFE5D4] dark:text-[#C8FF45] font-semibold">
                 ID: {(user?.empresaId || 'emp-01').slice(0, 8)}
               </span>
             </div>
@@ -848,7 +873,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
           {activeTab === 'candidates' && (
             <div
               key={selectedVacancyForRanking?.id || 'list'}
-              className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6"
+              className="animate-page-enter-left max-w-[1680px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6"
             >
             {/* VISTA A: LISTADO Y GESTIÓN DE CONVOCATORIAS (ACTIVAS / INACTIVAS) */}
             {!selectedVacancyForRanking ? (
@@ -870,17 +895,17 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                   <div className="flex items-center gap-5 shrink-0 bg-[#090A0C]/80 backdrop-blur-md p-4 rounded-xl border border-[#F1F2EC]/12">
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-[#C8FF45]">{activeVacancies.length}</span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#777873]">Activas</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Activas</span>
                     </div>
                     <div className="w-px h-8 bg-[#F1F2EC]/12" />
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-[#F1F2EC]">{inactiveVacancies.length}</span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#777873]">Inactivas</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Inactivas</span>
                     </div>
                     <div className="w-px h-8 bg-[#F1F2EC]/12" />
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-[#4C6FFF]">{applications.length}</span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#777873]">Postulaciones</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Postulaciones</span>
                     </div>
                   </div>
                 </div>
@@ -1024,13 +1049,13 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                                 {vac.requiredSkills.slice(0, 3).map((skill, sIdx) => (
                                   <span
                                     key={sIdx}
-                                    className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                                    className="px-2 py-0.5 rounded text-xs font-medium bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                                   >
                                     {skill}
                                   </span>
                                 ))}
                                 {vac.requiredSkills.length > 3 && (
-                                  <span className="px-1.5 py-0.5 text-[10px] text-slate-400 font-semibold">
+                                  <span className="px-1.5 py-0.5 text-xs text-slate-400 font-semibold">
                                     +{vac.requiredSkills.length - 3}
                                   </span>
                                 )}
@@ -1163,28 +1188,28 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                   <div className="flex items-center gap-5 shrink-0 bg-slate-900/90 p-4 rounded-xl border border-slate-800">
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-white">{currentVacancyApplications.length}</span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">Postulantes</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-slate-400">Postulantes</span>
                     </div>
                     <div className="w-px h-8 bg-slate-800" />
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-emerald-400">
                         {currentVacancyApplications.filter((a) => a.status === 'Preseleccionado').length}
                       </span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">Preseleccionados</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-slate-400">Preseleccionados</span>
                     </div>
                     <div className="w-px h-8 bg-slate-800" />
                     <div className="text-center px-1">
                       <span className="text-2xl font-mono-tabular font-bold block text-amber-300">
                         {currentVacancyApplications.filter((a) => a.status === 'Entrevista').length}
                       </span>
-                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">Entrevistas</span>
+                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-slate-400">Entrevistas</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Filter & Search Toolbar Scoped to this Vacancy */}
-                <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row gap-4 items-center justify-between">
-                  <div className="flex flex-1 flex-col sm:flex-row gap-3 w-full">
+                <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3 w-full items-stretch sm:items-center">
                     {/* Search Input */}
                     <div className="relative flex-1">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
@@ -1193,15 +1218,30 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                         placeholder="Buscar postulante por nombre, teléfono o correo..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        className="w-full min-h-[42px] pl-10 pr-4 py-2.5 text-xs bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={() => setIsHrCandidateFiltersOpen((prev) => !prev)}
+                      className="sm:hidden inline-flex items-center justify-between gap-2 min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      aria-expanded={isHrCandidateFiltersOpen}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Filtros y Notificación</span>
+                      </span>
+                      {isHrCandidateFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  <div className={`${isHrCandidateFiltersOpen ? 'flex' : 'hidden sm:flex'} flex-col md:flex-row gap-3 items-stretch md:items-center justify-between`}>
                     {/* Status selector */}
                     <select
                       value={selectedStatus}
                       onChange={(e) => setSelectedStatus(e.target.value)}
-                      className="w-full sm:w-auto text-xs font-semibold px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      className="w-full sm:w-auto min-h-[42px] text-xs font-semibold px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20"
                     >
                       <option value="all">Todos los estados</option>
                       <option value="Recibida">Recibida</option>
@@ -1211,12 +1251,11 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       <option value="Contratado">Contratado</option>
                       <option value="Descartado">Descartado</option>
                     </select>
-                  </div>
 
-                  {/* Sort toggle + Auto-notify channel + Bulk reject <50% */}
-                  <div className="shrink-0 flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                    <select
-                      value={autoNotifyChannel}
+                    {/* Sort toggle + Auto-notify channel + Bulk reject <50% */}
+                    <div className="shrink-0 flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                      <select
+                        value={autoNotifyChannel}
                       onChange={(e) => setAutoNotifyChannel(e.target.value as NotifyChannel)}
                       className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 cursor-pointer"
                       title="Canal automático de notificaciones"
@@ -1271,7 +1310,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                               setIsBulkRejecting(false);
                             }
                           }}
-                          className="press inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-40 cursor-pointer shadow-2xs"
+                          className="press inline-flex items-center gap-1.5 min-h-[42px] sm:min-h-0 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-40 cursor-pointer shadow-2xs"
                           title="Cancela y notifica automáticamente a todos los candidatos con menos de 50% de afinidad ML"
                         >
                           <XCircle className="w-3.5 h-3.5" />
@@ -1285,7 +1324,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                     <button
                       type="button"
                       onClick={() => setSortByML(!sortByML)}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-1.5 min-h-[42px] sm:min-h-0 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                         sortByML
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs'
                           : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -1294,6 +1333,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>{sortByML ? 'Orden: Afinidad ML (Desc)' : 'Orden: Fecha Reciente'}</span>
                     </button>
+                  </div>
                   </div>
                 </div>
 
@@ -1414,7 +1454,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                         {/* Center: ML Score & Explainability Button */}
                         <div className="flex items-center gap-4 shrink-0 bg-slate-50/80 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800">
                           <div className="text-right">
-                            <span className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-400 block">
+                            <span className="text-xs font-bold uppercase text-slate-400 dark:text-slate-400 block">
                               Afinidad Algorítmica
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 justify-end">
@@ -1545,7 +1585,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
           {/* PANEL 2: PLANTILLA DE EMPLEADOS CONTRATADOS */}
           {activeTab === 'employees' && (
-            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+            <div className="animate-page-enter-left max-w-[1680px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
             {/* Header Metrics Banner for Employees */}
             <div className="bg-slate-900 dark:bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-7 text-white space-y-6 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1572,7 +1612,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           : 'border-amber-500/45 shadow-[0_0_16px_rgba(245,158,11,0.12)]'
                       }`}
                     >
-                      <span className="text-[10px] font-bold uppercase text-slate-400 block">Total</span>
+                      <span className="text-xs font-bold uppercase text-slate-400 block">Total</span>
                       <span className="text-xl font-black text-white tabular-nums transition-all duration-200">
                         {employeeTimelineData.total}
                       </span>
@@ -1584,7 +1624,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           : 'border-amber-500/45 shadow-[0_0_16px_rgba(245,158,11,0.12)]'
                       }`}
                     >
-                      <span className="text-[10px] font-bold uppercase text-emerald-400 block">Activos</span>
+                      <span className="text-xs font-bold uppercase text-emerald-400 block">Activos</span>
                       <span className="text-xl font-black text-emerald-400 tabular-nums transition-all duration-200">
                         {employeeTimelineData.active}
                       </span>
@@ -1596,7 +1636,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           : 'border-amber-500/45 shadow-[0_0_16px_rgba(245,158,11,0.12)]'
                       }`}
                     >
-                      <span className="text-[10px] font-bold uppercase text-rose-400 block">Bajas</span>
+                      <span className="text-xs font-bold uppercase text-rose-400 block">Bajas</span>
                       <span className="text-xl font-black text-rose-400 tabular-nums transition-all duration-200">
                         {employeeTimelineData.dismissed}
                       </span>
@@ -1608,7 +1648,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           : 'border-amber-500/45 shadow-[0_0_16px_rgba(245,158,11,0.12)]'
                       }`}
                     >
-                      <span className="text-[10px] font-bold uppercase text-amber-400 block">Nómina Mes</span>
+                      <span className="text-xs font-bold uppercase text-amber-400 block">Nómina Mes</span>
                       <span className="text-xs font-mono font-black text-amber-300 block mt-1 tabular-nums transition-all duration-200">
                         RD$ {(employeeTimelineData.payroll / 1000).toFixed(0)}k
                       </span>
@@ -1680,7 +1720,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                         onMouseLeave={() => setHoveredTimelineNodeIdx(null)}
                       >
                         {hoveredNode && (
-                          <div className="pointer-events-none absolute bottom-full right-0 mb-1.5 z-30 rounded-lg bg-slate-900/95 backdrop-blur-md border border-slate-700 px-2.5 py-1.5 text-[10px] shadow-xl space-y-1 min-w-[160px]">
+                          <div className="pointer-events-none absolute bottom-full right-0 mb-1.5 z-30 rounded-lg bg-slate-900/95 backdrop-blur-md border border-slate-700 px-2.5 py-1.5 text-xs shadow-xl space-y-1 min-w-[160px]">
                             <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-0.5">
                               <span className="font-mono font-bold text-amber-300">{hoveredNode.fullDate}</span>
                               {(hoveredNode.peakTotal ||
@@ -1810,7 +1850,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-100">Línea Temporal de Estadísticas</span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                          className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
                             employeeTimelineData.isLive
                               ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
                               : 'bg-amber-500/20 text-amber-300 border-amber-500/45'
@@ -1906,30 +1946,45 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                 </div>
 
                 {/* Midpoint Reference Label */}
-                <div className="flex items-center justify-center text-[10px] font-mono font-bold text-slate-500">
+                <div className="flex items-center justify-center text-xs font-mono font-bold text-slate-500">
                   <span className="hidden sm:inline">{employeeTimelineData.midLabel}</span>
                 </div>
               </div>
             </div>
 
             {/* Filter and Search Bar for Employees */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row gap-3 items-center justify-between">
-              <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  placeholder="Buscar colaborador por nombre, cargo o correo..."
-                  value={employeeSearch}
-                  onChange={(e) => setEmployeeSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 w-full items-stretch sm:items-center">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Buscar colaborador por nombre, cargo o correo..."
+                    value={employeeSearch}
+                    onChange={(e) => setEmployeeSearch(e.target.value)}
+                    className="w-full min-h-[42px] pl-10 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsHrEmployeeFiltersOpen((prev) => !prev)}
+                  className="sm:hidden inline-flex items-center justify-between gap-2 min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                  aria-expanded={isHrEmployeeFiltersOpen}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Filtros de Plantilla</span>
+                  </span>
+                  {isHrEmployeeFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              <div className={`${isHrEmployeeFiltersOpen ? 'flex' : 'hidden sm:flex'} flex-wrap items-center justify-between gap-2 w-full`}>
                 <select
                   value={employeeDepartmentFilter}
                   onChange={(e) => setEmployeeDepartmentFilter(e.target.value)}
-                  className="text-xs font-semibold px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none"
+                  className="w-full sm:w-auto min-h-[42px] text-xs font-semibold px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none"
                 >
                   <option value="all">Todos los Departamentos</option>
                   <option value="Tecnología">Tecnología</option>
@@ -2084,7 +2139,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       <p className="text-xs font-medium text-slate-400 truncate">
                         {emp.role}
                       </p>
-                      <span className="inline-block text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <span className="inline-block text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {emp.department}
                       </span>
                     </div>
@@ -2092,7 +2147,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                     {/* Footer strip: Status Badge & Monthly Salary */}
                     <div className="w-full pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        className={`px-2 py-0.5 rounded text-xs font-bold ${
                           emp.status === 'Activo'
                             ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
                             : 'bg-rose-950/60 text-rose-400 border border-rose-800/50'
@@ -2123,7 +2178,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
           {/* PANEL 3: MENSAJES WEB <-> TELEGRAM */}
           {activeTab === 'messages' && (
-            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
+            <div className="animate-page-enter-left max-w-[1680px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
               <div>
                 <h2 className="text-xl sm:text-2xl font-extrabold text-[#3a2818] dark:text-[#F1F2EC] tracking-tight">
                   Mensajes con Candidatos
@@ -2138,7 +2193,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
           {/* PANEL 4: PLANTILLAS DE NOTIFICACIÓN */}
           {activeTab === 'templates' && (
-            <div className="animate-page-enter-left max-w-7xl 2xl:max-w-[1560px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div className="animate-page-enter-left max-w-[1680px] mx-auto w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
               <EmailTemplatesEditor companyName={user?.empresaNombre} />
             </div>
           )}
@@ -2166,7 +2221,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                 <span className="text-xs font-black uppercase tracking-widest text-[#422e1c] dark:text-[#f3e7d6]">
                   EXPEDIENTE DE CONVOCATORIA
                 </span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#cbb597]/40 dark:bg-[#3d2e21] text-[#553920] dark:text-[#eedec9]">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-[#cbb597]/40 dark:bg-[#3d2e21] text-[#553920] dark:text-[#eedec9]">
                   {user?.empresaNombre || 'PLATAFORMAML'} · VAC-NUEVA
                 </span>
               </div>
@@ -2190,7 +2245,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>PLANTILLA OFICIAL DE REQUERIMIENTOS PARA APRENDIZAJE AUTOMÁTICO</span>
                 </div>
-                <span className="font-mono text-[10px]">ID FORMULARIO: ML-VAC-{Date.now().toString().slice(-4)}</span>
+                <span className="font-mono text-xs">ID FORMULARIO: ML-VAC-{Date.now().toString().slice(-4)}</span>
               </div>
 
               {/* THE NEUMORPHIC DOCUMENT SHEET (Hoja de Papel con campos editables integrados) */}
@@ -2206,16 +2261,16 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                         {user?.empresaNombre || 'PlataformaML Corporativo'}
                       </span>
                     </div>
-                    <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-600 dark:text-emerald-400 block mt-0.5">
+                    <span className="text-xs uppercase tracking-widest font-bold text-emerald-600 dark:text-emerald-400 block mt-0.5">
                       DIRECCIÓN DE TALENTO HUMANO & RECLUTAMIENTO
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg">
+                    <span className="text-xs font-mono text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg">
                       FECHA: {new Date().toLocaleDateString('es-DO', { year: 'numeric', month: 'short', day: 'numeric' })}
                     </span>
-                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold border border-emerald-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold border border-emerald-500/30">
                       ESTADO: BORRADOR ACTIVO
                     </span>
                   </div>
@@ -2255,7 +2310,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                             setAddingCatalogType(addingCatalogType === 'DEPARTAMENTO' ? null : 'DEPARTAMENTO');
                             setNewCatalogOptionName('');
                           }}
-                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                          className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                         >
                           + Agregar departamento
                         </button>
@@ -2298,7 +2353,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                             setAddingCatalogType(addingCatalogType === 'ESPECIALIDAD' ? null : 'ESPECIALIDAD');
                             setNewCatalogOptionName('');
                           }}
-                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                          className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                         >
                           + Agregar especialidad
                         </button>
@@ -2328,7 +2383,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                             setAddingCatalogType(addingCatalogType === 'CARRERA' ? null : 'CARRERA');
                             setNewCatalogOptionName('');
                           }}
-                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                          className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                         >
                           + Agregar carrera
                         </button>
@@ -2488,7 +2543,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
                         Habilidades Técnicas y Competencias (Separadas por comas)
                       </label>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
                         Vectorización IA
                       </span>
                     </div>
@@ -2510,7 +2565,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                           .map((skill, idx) => (
                             <span
                               key={idx}
-                              className="neu-raised-btn px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#fcf9f2] dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
+                              className="neu-raised-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-[#fcf9f2] dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
                             >
                               ✓ {skill}
                             </span>
@@ -2536,7 +2591,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
                     <div className="sm:col-span-4 space-y-3.5">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
                           Años Mín. Experiencia:
                         </label>
                         <input
@@ -2550,7 +2605,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
                           Vacantes / Plazas:
                         </label>
                         <input
@@ -2691,7 +2746,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                  <span className="text-xs font-bold uppercase text-slate-400 block">
                     Salario Base Mensual
                   </span>
                   <span className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
@@ -2783,28 +2838,28 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
-                    <span className="text-[10px] text-slate-400 block">Preaviso</span>
+                    <span className="text-xs text-slate-400 block">Preaviso</span>
                     <span className="font-mono font-bold text-slate-200">
                       RD$ {calc.noticeAmount.toLocaleString('es-DO')}
                     </span>
                   </div>
 
                   <div className="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
-                    <span className="text-[10px] text-slate-400 block">Cesantía</span>
+                    <span className="text-xs text-slate-400 block">Cesantía</span>
                     <span className="font-mono font-bold text-slate-200">
                       RD$ {calc.severanceAmount.toLocaleString('es-DO')}
                     </span>
                   </div>
 
                   <div className="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
-                    <span className="text-[10px] text-slate-400 block">Vacaciones</span>
+                    <span className="text-xs text-slate-400 block">Vacaciones</span>
                     <span className="font-mono font-bold text-slate-200">
                       RD$ {calc.vacationAmount.toLocaleString('es-DO')}
                     </span>
                   </div>
 
                   <div className="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/60">
-                    <span className="text-[10px] text-slate-400 block">Salario Navidad</span>
+                    <span className="text-xs text-slate-400 block">Salario Navidad</span>
                     <span className="font-mono font-bold text-slate-200">
                       RD$ {calc.christmasSalaryAmount.toLocaleString('es-DO')}
                     </span>
@@ -2898,7 +2953,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string) => void }> =
                     {viewingSettlementEmployee.role} · {viewingSettlementEmployee.department}
                   </p>
                 </div>
-                <span className="px-2.5 py-1 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold border border-rose-200 dark:border-rose-800">
+                <span className="px-2.5 py-1 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-xs font-bold border border-rose-200 dark:border-rose-800">
                   Baja Procesada
                 </span>
               </div>

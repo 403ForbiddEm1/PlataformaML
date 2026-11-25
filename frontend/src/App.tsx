@@ -26,6 +26,7 @@ const MainApp: React.FC = () => {
 
   // Navigation state (Starts at Vacancies Catalog or Login)
   const [currentView, setCurrentView] = useState<string>('vacancies');
+  const [targetTab, setTargetTab] = useState<string | undefined>(undefined);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [emailTokenAction, setEmailTokenAction] = useState<EmailTokenAction>(() => {
     if (typeof window === 'undefined') return null;
@@ -98,14 +99,16 @@ const MainApp: React.FC = () => {
   );
 
   const handleNavigate = useCallback(
-    (nextView: string) => {
+    (nextView: string, initialTab?: string) => {
       // Logout transition: user was authenticated and navigates back to login
       if (nextView === 'login' && (wasAuthenticatedRef.current || Boolean(user))) {
         wasAuthenticatedRef.current = false;
+        setTargetTab(undefined);
         if (user) logout();
         runAuthTransition('login', 'logout-exit', 680);
         return;
       }
+      setTargetTab(initialTab);
       setCurrentView(nextView);
     },
     [logout, runAuthTransition, user]
@@ -195,23 +198,24 @@ const MainApp: React.FC = () => {
           <CandidateDashboardPage
             onNavigate={handleNavigate}
             onApplyVacancy={handleApplyToVacancy}
+            initialTab={targetTab}
           />
         )}
 
         {currentView === 'hr-dashboard' && (
-          <HRDashboardPage onNavigate={handleNavigate} />
+          <HRDashboardPage onNavigate={handleNavigate} initialTab={targetTab} />
         )}
 
         {(currentView === 'global-admin-dashboard' || currentView === 'admin-dashboard') && (
           user?.role === 'superadmin' ? (
-            <GlobalAdminDashboardPage onNavigate={handleNavigate} />
+            <GlobalAdminDashboardPage onNavigate={handleNavigate} initialTab={targetTab} />
           ) : (
-            <CompanyAdminDashboardPage onNavigate={handleNavigate} />
+            <CompanyAdminDashboardPage onNavigate={handleNavigate} initialTab={targetTab} />
           )
         )}
 
         {currentView === 'company-admin-dashboard' && (
-          <CompanyAdminDashboardPage onNavigate={handleNavigate} />
+          <CompanyAdminDashboardPage onNavigate={handleNavigate} initialTab={targetTab} />
         )}
 
         {(currentView === 'vacancies' || currentView === 'home') && (

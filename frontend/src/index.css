@@ -3,6 +3,10 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html {
+    font-size: clamp(14px, 0.22vw + 13px, 18px);
+  }
+
   :root {
     --font-sans: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-heading: 'Bricolage Grotesque', 'Figtree', system-ui, -apple-system, sans-serif;

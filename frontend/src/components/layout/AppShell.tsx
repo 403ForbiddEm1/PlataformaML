@@ -102,12 +102,12 @@ export const AppShell: React.FC<AppShellProps> = ({
         className="app-content-shift flex-1 flex flex-col min-w-0 max-md:!pl-0"
         style={{ paddingLeft: pinned ? SIDEBAR_FULL_PX : SIDEBAR_RAIL_PX }}
       >
-        <header className="h-14 sm:h-16 sticky top-0 z-30 bg-[#F6EEE2]/88 dark:bg-[#090A0C]/84 backdrop-blur-xl border-b border-[#C8B193]/80 dark:border-[#F1F2EC]/10 px-3 sm:px-8 flex items-center justify-between gap-3 text-[#3A2818] dark:text-[#F1F2EC]">
+        <header className="h-14 sm:h-16 sticky top-0 z-30 bg-[#F6EEE2]/88 dark:bg-[#090A0C]/84 backdrop-blur-md border-b border-[#C8B193]/80 dark:border-[#F1F2EC]/10 px-3 sm:px-8 flex items-center justify-between gap-3 text-[#3A2818] dark:text-[#F1F2EC]">
           <div className="flex items-center gap-2 text-xs min-w-0">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="press md:hidden p-2 -ml-1 rounded-xl bg-[#EFE5D4] dark:bg-slate-800/80 border border-[#C8B193] dark:border-slate-700 text-[#3A2818] dark:text-[#F1F2EC] cursor-pointer shrink-0"
+              className="press md:hidden min-h-[42px] min-w-[42px] p-2 -ml-1 inline-flex items-center justify-center rounded-xl bg-[#EFE5D4] dark:bg-slate-800/80 border border-[#C8B193] dark:border-slate-700 text-[#3A2818] dark:text-[#F1F2EC] cursor-pointer shrink-0"
               aria-label="Abrir menú de navegación"
             >
               <Menu className="w-4 h-4" />
