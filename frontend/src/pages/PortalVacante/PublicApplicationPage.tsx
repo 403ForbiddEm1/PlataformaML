@@ -122,11 +122,11 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
 
       <main className="flex-1 w-full flex flex-col bg-transparent">
         {/* Unified Dossier Canvas: Fits cleanly inside 1 viewport on desktop & scales on ultrawide */}
-        <div className="w-full max-w-[1680px] mx-auto 2xl:border-x border-b border-[#c8b193] dark:border-[#4d3c2e] flex-1 flex flex-col">
-          {/* Top Row: Compact Manila Folder Header + Breadcrumb */}
-          <div className="w-full border-b-2 border-[#c8b193] dark:border-[#4d3c2e] bg-[#e5d4bc] dark:bg-[#2c221a]">
-            {/* Combined Breadcrumb & Manila Folder Tab Strip */}
-            <div className="w-full px-4 sm:px-6 lg:px-10 py-2 border-b border-[#c8b193]/70 dark:border-[#4d3c2e]/70 bg-[#dfcbaf] dark:bg-[#382b20] flex flex-wrap items-center justify-between gap-2">
+        <div className="w-full max-w-[1680px] mx-auto 2xl:border-x border-b border-[#c8b193] dark:border-white/12 flex-1 flex flex-col">
+          {/* Top Row: Compact Header + Breadcrumb */}
+          <div className="w-full border-b-2 border-[#c8b193] dark:border-white/12 bg-[#e5d4bc] dark:bg-[#0B0E14]/55 dark:backdrop-blur-md">
+            {/* Combined Breadcrumb & Folder Tab Strip */}
+            <div className="w-full px-4 sm:px-6 lg:px-10 py-2 border-b border-[#c8b193]/70 dark:border-white/10 bg-[#dfcbaf] dark:bg-white/[0.04] flex flex-wrap items-center justify-between gap-2">
               <nav className="flex items-center gap-1.5 text-[11px] sm:text-xs text-[#70553b] dark:text-[#c4a482] font-semibold min-w-0">
                 <Folder className="w-3.5 h-3.5 text-[#7d5634] dark:text-[#dfc3a1] shrink-0" />
                 <button
@@ -215,9 +215,9 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
           </div>
 
           {/* Bottom Row: Grid with Shared Internal Borders (Divide Left Form & Right Process) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x-2 divide-[#c8b193] dark:divide-[#4d3c2e] w-full flex-1 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x-2 divide-[#c8b193] dark:divide-white/12 w-full flex-1 items-stretch">
             {/* Left Cell: Postulation Form or Auth Gate */}
-            <div className="lg:col-span-8 p-4 sm:p-6 lg:px-8 lg:py-5 space-y-3.5 bg-white dark:bg-slate-900 flex flex-col justify-center">
+            <div className="lg:col-span-8 p-4 sm:p-6 lg:px-8 lg:py-5 space-y-3.5 bg-white/85 dark:bg-[#0B0E14]/50 dark:backdrop-blur-md flex flex-col justify-center">
               {!isAuthenticated ? (
                 /* Security Gate: Candidate must be logged in to prevent spoofing */
                 <div className="text-center py-10 px-4 space-y-6">
@@ -367,15 +367,15 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
               )}
             </div>
 
-            {/* Right Cell: Unified Manila Folder Selection Process (Shared Borders) */}
-            <div className="lg:col-span-4 bg-[#e5d4bc] dark:bg-[#2c221a] flex flex-col divide-y divide-[#c8b193]/70 dark:divide-[#4d3c2e]/70">
+            {/* Right Cell: Unified Selection Process (Glassmorphism) */}
+            <div className="lg:col-span-4 bg-[#e5d4bc] dark:bg-[#0B0E14]/45 dark:backdrop-blur-md flex flex-col divide-y divide-[#c8b193]/70 dark:divide-white/12">
               {/* Folder Top Tab Strip */}
-              <div className="px-4 sm:px-5 py-2.5 bg-[#dfcbaf] dark:bg-[#382b20] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-black text-[#422e1c] dark:text-[#f3e7d6] uppercase tracking-wider">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+              <div className="px-4 sm:px-5 py-2.5 bg-[#dfcbaf] dark:bg-white/[0.04] flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-black text-[#422e1c] dark:text-[#F1F2EC] uppercase tracking-wider">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-700 dark:text-[#C8FF45] shrink-0" />
                   <span>Proceso de Selección IA</span>
                 </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#cbb597]/40 dark:bg-[#1d1612] text-[#553920] dark:text-[#eedec9] truncate max-w-[130px]">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#cbb597]/40 dark:bg-white/[0.08] text-[#553920] dark:text-[#F1F2EC] border border-transparent dark:border-white/10 truncate max-w-[130px]">
                   {vacancy.empresaNombre || 'PLATAFORMAML'}
                 </span>
               </div>
@@ -383,57 +383,57 @@ export const PublicApplicationPage: React.FC<PublicApplicationPageProps> = ({
               {/* Top Section: Proceso ágil con Machine Learning */}
               <div className="p-4 sm:p-5 space-y-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 dark:bg-[#C8FF45]/15 text-emerald-800 dark:text-[#C8FF45] flex items-center justify-center border border-emerald-500/30 dark:border-[#C8FF45]/30 shrink-0">
                     <TrendingUp className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-black text-[#3a2818] dark:text-[#f8eee0] leading-snug">
+                  <h3 className="text-sm font-black text-[#3a2818] dark:text-[#F1F2EC] leading-snug">
                     Proceso ágil con Machine Learning
                   </h3>
                 </div>
-                <p className="text-[11px] sm:text-xs text-[#6d4f31] dark:text-[#dec9a7] leading-snug">
-                  El modelo de afinidad profesional evalúa tu concordancia técnica con <strong className="text-[#3a2818] dark:text-[#f8eee0] font-bold">{vacancy.title}</strong>, reduciendo la respuesta de días a minutos.
+                <p className="text-[11px] sm:text-xs text-[#6d4f31] dark:text-slate-300 leading-snug">
+                  El modelo de afinidad profesional evalúa tu concordancia técnica con <strong className="text-[#3a2818] dark:text-white font-bold">{vacancy.title}</strong>, reduciendo la respuesta de días a minutos.
                 </p>
               </div>
 
               {/* Bottom Section: Flujo de Selección Transparente */}
-              <div className="p-4 sm:p-5 space-y-2.5 bg-[#ecdcc6]/50 dark:bg-[#231b14] flex-1 flex flex-col justify-center">
-                <h4 className="text-[11px] font-black uppercase tracking-wider text-[#422e1c] dark:text-[#f3e7d6] flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              <div className="p-4 sm:p-5 space-y-2.5 bg-[#ecdcc6]/50 dark:bg-white/[0.02] flex-1 flex flex-col justify-center">
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-[#422e1c] dark:text-[#F1F2EC] flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-[#C8FF45]" />
                   <span>Flujo de Selección Transparente</span>
                 </h4>
 
                 <div className="space-y-2 text-xs">
-                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-[#1a140f] border border-[#d9c7ab]/80 dark:border-[#382b20]">
-                    <div className="w-6 h-6 rounded-lg bg-[#dfcbaf] dark:bg-[#2c221a] text-[#543b23] dark:text-[#dec9a7] flex items-center justify-center shrink-0 mt-0.5 font-bold">
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-white/[0.04] border border-[#d9c7ab]/80 dark:border-white/12">
+                    <div className="w-6 h-6 rounded-lg bg-[#dfcbaf] dark:bg-white/[0.08] text-[#543b23] dark:text-[#F1F2EC] flex items-center justify-center shrink-0 mt-0.5 font-bold">
                       <Mail className="w-3 h-3" />
                     </div>
                     <div>
-                      <p className="font-bold text-[#3a2818] dark:text-[#f8eee0] text-[11px] sm:text-xs">1. Recepción y Scoring</p>
-                      <p className="text-[#70553b] dark:text-[#baa085] text-[10px] sm:text-[11px] leading-tight">
+                      <p className="font-bold text-[#3a2818] dark:text-[#F1F2EC] text-[11px] sm:text-xs">1. Recepción y Scoring</p>
+                      <p className="text-[#70553b] dark:text-slate-400 text-[10px] sm:text-[11px] leading-tight">
                         Clasificación algorítmica objetiva del CV.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-[#1a140f] border border-[#d9c7ab]/80 dark:border-[#382b20]">
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-white/[0.04] border border-[#d9c7ab]/80 dark:border-white/12">
                     <div className="w-6 h-6 rounded-lg bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-bold">
                       <MessageSquare className="w-3 h-3" />
                     </div>
                     <div>
-                      <p className="font-bold text-[#3a2818] dark:text-[#f8eee0] text-[11px] sm:text-xs">2. Notificación Automatizada</p>
-                      <p className="text-[#70553b] dark:text-[#baa085] text-[10px] sm:text-[11px] leading-tight">
+                      <p className="font-bold text-[#3a2818] dark:text-[#F1F2EC] text-[11px] sm:text-xs">2. Notificación Automatizada</p>
+                      <p className="text-[#70553b] dark:text-slate-400 text-[10px] sm:text-[11px] leading-tight">
                         Confirmación instantánea de postulación.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-[#1a140f] border border-[#d9c7ab]/80 dark:border-[#382b20]">
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f6eee2]/90 dark:bg-white/[0.04] border border-[#d9c7ab]/80 dark:border-white/12">
                     <div className="w-6 h-6 rounded-lg bg-sky-500/15 dark:bg-sky-500/20 text-sky-800 dark:text-sky-400 flex items-center justify-center shrink-0 mt-0.5 font-bold">
                       <ShieldCheck className="w-3 h-3" />
                     </div>
                     <div>
-                      <p className="font-bold text-[#3a2818] dark:text-[#f8eee0] text-[11px] sm:text-xs">3. Decisión Humana Responsable</p>
-                      <p className="text-[#70553b] dark:text-[#baa085] text-[10px] sm:text-[11px] leading-tight">
+                      <p className="font-bold text-[#3a2818] dark:text-[#F1F2EC] text-[11px] sm:text-xs">3. Decisión Humana Responsable</p>
+                      <p className="text-[#70553b] dark:text-slate-400 text-[10px] sm:text-[11px] leading-tight">
                         El reclutador valida la explicación del modelo antes de avanzar.
                       </p>
                     </div>

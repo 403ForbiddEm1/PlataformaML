@@ -951,14 +951,14 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                 <div className="w-full flex-1 flex flex-col border-b border-[#c8b193] dark:border-[#F1F2EC]/12 bg-white dark:bg-transparent animate-in fade-in duration-300">
                   {/* Pestaña Superior de Expediente Manila (Shared Bottom Border) */}
                   <div className="w-full border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 bg-[#e5d4bc] dark:bg-[#F1F2EC]/[0.03] dark:backdrop-blur-[2px]">
-                    <div className="w-full px-6 sm:px-10 py-3 border-b border-[#c8b193]/70 dark:border-[#F1F2EC]/10 bg-[#dfcbaf] dark:bg-transparent flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[#543b23] dark:text-[#F1F2EC]">
-                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                          <Folder className="w-3.5 h-3.5" />
+                    <div className="w-full px-6 sm:px-8 py-3.5 border-b border-[#c8b193]/70 dark:border-[#F1F2EC]/10 bg-[#dfcbaf] dark:bg-transparent flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 text-sm font-bold text-[#543b23] dark:text-[#F1F2EC]">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Folder className="w-4 h-4" />
                         </div>
-                        <span className="uppercase tracking-wider">EXPEDIENTE DE SEGUIMIENTO Y POSTULACIONES</span>
+                        <span className="uppercase tracking-wider">EXPEDIENTE Y POSTULACIONES</span>
                         <span className="text-[#a58665] dark:text-[#777873]">·</span>
-                        <span className="font-mono text-[11px] text-[#795b3d] dark:text-[#777873]">
+                        <span className="font-mono text-xs text-[#795b3d] dark:text-[#777873] whitespace-nowrap">
                           MATRÍCULA: EXP-CAND-2026
                         </span>
                       </div>
@@ -973,7 +973,7 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                       <div className="lg:col-span-6 p-0 flex">
                         <div className="w-full h-full overflow-hidden bg-[#F1F2EC] dark:bg-[#0D1017] flex flex-col justify-between">
                           {/* Banner Superior Curvo con Nuestra Paleta (#090A0C, #4C6FFF, #C8FF45) */}
-                          <div className="relative h-14 sm:h-16 overflow-hidden bg-gradient-to-br from-[#090A0C] via-[#2746C7] to-[#4C6FFF]">
+                          <div className="relative h-20 sm:h-24 overflow-hidden bg-gradient-to-br from-[#090A0C] via-[#2746C7] to-[#4C6FFF]">
                             {/* Ondas y destellos atmosféricos de paleta */}
                             <div
                               aria-hidden="true"
@@ -989,8 +989,8 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             />
 
                             {/* Badge sutil superior derecho */}
-                            <div className="relative z-10 flex justify-end p-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#090A0C]/75 backdrop-blur-md border border-[#C8FF45]/45 text-[#C8FF45] text-xs font-bold tracking-wide">
+                            <div className="relative z-10 flex justify-end p-3">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#090A0C]/75 backdrop-blur-md border border-[#C8FF45]/45 text-[#C8FF45] text-xs font-bold tracking-wide">
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#C8FF45]" />
                                 <span>EXP-2026</span>
                               </span>
@@ -998,22 +998,22 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
 
                             {/* Arco curvo inferior separando el banner del cuerpo */}
                             <svg
-                              viewBox="0 0 400 44"
+                              viewBox="0 0 400 46"
                               preserveAspectRatio="none"
                               aria-hidden="true"
-                              className="absolute bottom-0 inset-x-0 w-full h-5 pointer-events-none"
+                              className="block absolute -bottom-[1px] inset-x-0 w-full h-[25px] pointer-events-none"
                             >
                               <path
-                                d="M0,44 C115,4 285,4 400,44 L400,44 L0,44 Z"
+                                d="M0,44 C115,4 285,4 400,44 L400,46 L0,46 Z"
                                 className="fill-[#F1F2EC] dark:fill-[#0D1017]"
                               />
                             </svg>
                           </div>
 
                           {/* Avatar Circular Centrado sobre el Arco + Información del Postulante */}
-                          <div className="px-4 pb-2.5 -mt-7 relative z-10 flex flex-col items-center text-center">
+                          <div className="px-5 pb-4 -mt-10 relative z-10 flex flex-col items-center text-center">
                             <div className="relative shrink-0">
-                              <div className="w-14 h-14 rounded-full p-[2.5px] bg-gradient-to-tr from-[#4C6FFF] via-[#7B95FF] to-[#C8FF45] shadow-md">
+                              <div className="w-20 h-20 rounded-full p-[3px] bg-gradient-to-tr from-[#4C6FFF] via-[#7B95FF] to-[#C8FF45] shadow-md">
                                 {profilePhoto ? (
                                   <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border-2 border-[#F1F2EC] dark:border-[#0D1017] relative group/mini">
                                     <img
@@ -1027,8 +1027,8 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                                       title="Cambiar foto de perfil"
                                       className="absolute inset-0 bg-black/65 opacity-0 group-hover/mini:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer gap-0.5"
                                     >
-                                      <Camera className="w-3.5 h-3.5 text-[#C8FF45]" />
-                                      <span className="text-[8px] font-bold">Editar</span>
+                                      <Camera className="w-4 h-4 text-[#C8FF45]" />
+                                      <span className="text-xs font-bold">Editar</span>
                                     </button>
                                   </div>
                                 ) : (
@@ -1038,55 +1038,55 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                                     className="w-full h-full rounded-full border-2 border-[#F1F2EC] dark:border-[#0D1017] bg-[#e5d4bc] dark:bg-[#141923] hover:bg-[#dfcbaf] dark:hover:bg-[#1c2333] flex flex-col items-center justify-center text-[#3a2818] dark:text-[#F1F2EC] gap-0.5 cursor-pointer transition-colors"
                                     title="Haz clic para agregar tu foto de perfil"
                                   >
-                                    <Camera className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45]" />
-                                    <span className="text-[8px] font-bold">+ Foto</span>
+                                    <Camera className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45]" />
+                                    <span className="text-xs font-bold">+ Foto</span>
                                   </button>
                                 )}
                               </div>
                               <div
-                                className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 dark:bg-[#C8FF45] rounded-full border-2 border-[#F1F2EC] dark:border-[#0D1017] shadow-xs"
+                                className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 dark:bg-[#C8FF45] rounded-full border-2 border-[#F1F2EC] dark:border-[#0D1017] shadow-xs"
                                 title="Cuenta activa"
                               />
                             </div>
 
-                            <div className="mt-1.5 flex items-center justify-center gap-1 max-w-full">
-                              <h2 className="text-base font-black text-[#090A0C] dark:text-[#F1F2EC] leading-tight truncate">
+                            <div className="mt-2.5 flex items-center justify-center gap-1.5 max-w-full">
+                              <h2 className="text-xl sm:text-2xl font-black text-[#090A0C] dark:text-[#F1F2EC] leading-tight truncate">
                                 {user?.name || 'Valeria Mendoza'}
                               </h2>
-                              <BadgeCheck className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
+                              <BadgeCheck className="w-5 h-5 text-[#4C6FFF] dark:text-[#C8FF45] shrink-0" />
                             </div>
 
-                            <p className="text-[11px] font-medium text-[#777873] truncate max-w-full mt-0.5">
+                            <p className="text-xs sm:text-sm font-medium text-[#777873] truncate max-w-full mt-1">
                               {profile?.title || user?.email || 'Postulante · PlataformaML'}
                             </p>
-                            <p className="text-xs text-[#777873]/85 truncate max-w-full font-mono-tabular">
+                            <p className="text-xs sm:text-sm text-[#777873]/90 truncate max-w-full font-mono-tabular mt-0.5">
                               {user?.email} · {user?.phone || '+1 (809) 555-0198'}
                             </p>
                           </div>
 
                           {/* Fila Inferior de 3 Columnas Numéricas con Divisores */}
-                          <div className="grid grid-cols-3 divide-x divide-[#090A0C]/12 dark:divide-[#F1F2EC]/12 border-t border-[#090A0C]/10 dark:border-[#F1F2EC]/10 bg-[#090A0C]/[0.025] dark:bg-white/[0.02] py-2 px-2 text-center">
-                            <div className="px-1">
-                              <span className="block text-sm sm:text-base font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
+                          <div className="grid grid-cols-3 divide-x divide-[#090A0C]/12 dark:divide-[#F1F2EC]/12 border-t border-[#090A0C]/10 dark:border-[#F1F2EC]/10 bg-[#090A0C]/[0.025] dark:bg-white/[0.02] py-3.5 px-3 text-center">
+                            <div className="px-2">
+                              <span className="block text-lg sm:text-xl font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
                                 {totalApps}
                               </span>
-                              <span className="block text-xs font-medium text-[#777873] leading-tight mt-0.5">
+                              <span className="block text-xs sm:text-sm font-medium text-[#777873] leading-tight mt-1">
                                 Postulaciones totales
                               </span>
                             </div>
-                            <div className="px-1">
-                              <span className="block text-sm sm:text-base font-black text-[#4C6FFF] dark:text-[#C8FF45] font-mono-tabular leading-tight">
+                            <div className="px-2">
+                              <span className="block text-lg sm:text-xl font-black text-[#4C6FFF] dark:text-[#C8FF45] font-mono-tabular leading-tight">
                                 {countInReview + countPreselected}
                               </span>
-                              <span className="block text-xs font-medium text-[#777873] leading-tight mt-0.5">
+                              <span className="block text-xs sm:text-sm font-medium text-[#777873] leading-tight mt-1">
                                 En proceso
                               </span>
                             </div>
-                            <div className="px-1">
-                              <span className="block text-sm sm:text-base font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
+                            <div className="px-2">
+                              <span className="block text-lg sm:text-xl font-black text-[#090A0C] dark:text-[#F1F2EC] font-mono-tabular leading-tight">
                                 {avgMlScore}%
                               </span>
-                              <span className="block text-xs font-medium text-[#777873] leading-tight mt-0.5">
+                              <span className="block text-xs sm:text-sm font-medium text-[#777873] leading-tight mt-1">
                                 Afinidad IA
                               </span>
                             </div>
@@ -1095,25 +1095,25 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                       </div>
 
                       {/* Lado Derecho: Gráfico Circular Donut de Distribución Porcentual (6 cols) */}
-                      <div className="lg:col-span-6 p-5 sm:p-6 space-y-3 bg-white dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px] dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.1)] flex flex-col justify-center">
-                        <div className="flex items-center justify-between pb-2 border-b border-[#c8b193]/40 dark:border-[#F1F2EC]/10">
+                      <div className="lg:col-span-6 p-6 sm:p-8 space-y-5 bg-white dark:bg-[#F1F2EC]/[0.025] dark:backdrop-blur-[2px] dark:shadow-[inset_0_1px_0_rgba(241,242,236,0.1)] flex flex-col justify-center">
+                        <div className="flex items-center justify-between pb-3 border-b border-[#c8b193]/40 dark:border-[#F1F2EC]/10">
                           <div>
-                            <h3 className="text-sm font-bold text-slate-900 dark:text-[#F1F2EC]">
-                              Distribución Porcentual de Postulaciones
+                            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#F1F2EC]">
+                              Porcentaje de Postulaciones
                             </h3>
-                            <p className="text-xs text-slate-500 dark:text-[#777873]">
+                            <p className="text-xs sm:text-sm text-slate-500 dark:text-[#777873] mt-0.5">
                               Métricas consolidadas de tu actividad en la plataforma
                             </p>
                           </div>
-                          <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-slate-100 dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md dark:border dark:border-[#F1F2EC]/14 text-slate-600 dark:text-[#F1F2EC] font-semibold">
+                          <span className="text-xs font-mono px-3 py-1 rounded-full bg-slate-100 dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md dark:border dark:border-[#F1F2EC]/14 text-slate-600 dark:text-[#F1F2EC] font-semibold whitespace-nowrap shrink-0">
                             {totalApps} Total
                           </span>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row items-center gap-6 pt-1">
+                        <div className="flex flex-col sm:flex-row items-center gap-7 pt-1">
                           {/* Gráfico Circular Donut */}
                           <div className="relative shrink-0 flex items-center justify-center">
-                            <svg className="w-28 h-28 -rotate-90 transform shrink-0" viewBox="0 0 100 100">
+                            <svg className="w-36 h-36 -rotate-90 transform shrink-0" viewBox="0 0 100 100">
                               <circle
                                 cx="50"
                                 cy="50"
@@ -1177,53 +1177,53 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                             </svg>
 
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-                              <span className="text-2xl font-black text-slate-900 dark:text-slate-100 leading-none">
+                              <span className="text-3xl font-black text-slate-900 dark:text-slate-100 leading-none">
                                 {totalApps}
                               </span>
-                              <span className="text-xs uppercase font-bold text-slate-400 mt-1">
+                              <span className="text-xs uppercase font-bold text-slate-400 mt-1.5">
                                 Postuladas
                               </span>
                             </div>
                           </div>
 
                           {/* Leyenda */}
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1 text-xs w-full">
-                            <div className="space-y-0.5">
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-4 flex-1 text-sm w-full">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Aceptadas</span>
+                                <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-200 font-semibold">Aceptadas</span>
                               </div>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                              <p className="text-sm text-slate-500 dark:text-slate-400 pl-5">
                                 <strong className="text-slate-900 dark:text-slate-100 font-bold">{countPreselected}</strong> ({pctPreselected}%)
                               </p>
                             </div>
 
-                            <div className="space-y-0.5">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
-                                <span className="text-slate-700 dark:text-slate-300 font-semibold">En revisión</span>
+                                <span className="w-3 h-3 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-200 font-semibold">En revisión</span>
                               </div>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                              <p className="text-sm text-slate-500 dark:text-slate-400 pl-5">
                                 <strong className="text-slate-900 dark:text-slate-100 font-bold">{countInReview}</strong> ({pctInReview}%)
                               </p>
                             </div>
 
-                            <div className="space-y-0.5">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
-                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Enviadas / Recibidas</span>
+                                <span className="w-3 h-3 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
+                                <span className="text-slate-700 dark:text-slate-200 font-semibold">Enviadas / Recibidas</span>
                               </div>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                              <p className="text-sm text-slate-500 dark:text-slate-400 pl-5">
                                 <strong className="text-slate-900 dark:text-slate-100 font-bold">{countReceived}</strong> ({pctReceived}%)
                               </p>
                             </div>
 
-                            <div className="space-y-0.5">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                                <span className="text-slate-700 dark:text-slate-300 font-semibold">Negadas</span>
+                                <span className="w-3 h-3 rounded-full bg-rose-500" />
+                                <span className="text-slate-700 dark:text-slate-200 font-semibold">Negadas</span>
                               </div>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 pl-4.5">
+                              <p className="text-sm text-slate-500 dark:text-slate-400 pl-5">
                                 <strong className="text-slate-900 dark:text-slate-100 font-bold">{countRejected}</strong> ({pctRejected}%)
                               </p>
                             </div>
@@ -1236,14 +1236,14 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                   {/* BIBLIOTECA DE CARPETAS DE 4 PISOS (Archivador Temático con Bordes Compartidos) */}
                   <div className="w-full flex flex-col">
                     {/* Barra de Título del Archivador (Shared Bottom Border) */}
-                    <div className="w-full px-6 sm:px-10 py-3.5 bg-[#dfcbaf] dark:bg-[#090A0C]/55 dark:backdrop-blur-xl border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#422e1c] dark:text-[#F1F2EC]">
-                        <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                          <Layers className="w-3.5 h-3.5" />
+                    <div className="w-full px-6 sm:px-8 py-4 bg-[#dfcbaf] dark:bg-[#090A0C]/55 dark:backdrop-blur-xl border-b-2 border-[#c8b193] dark:border-[#F1F2EC]/12 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 text-sm font-black uppercase tracking-wider text-[#422e1c] dark:text-[#F1F2EC]">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Layers className="w-4 h-4" />
                         </div>
                         <span>Biblioteca de Expedientes Laborales (4 Pisos de Trazabilidad)</span>
                       </div>
-                      <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-full bg-[#f6eee2] dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md text-[#543b23] dark:text-[#F1F2EC] border border-[#d9c7ab] dark:border-[#F1F2EC]/14">
+                      <span className="text-xs font-mono font-bold px-3.5 py-1.5 rounded-full bg-[#f6eee2] dark:bg-[#F1F2EC]/[0.06] dark:backdrop-blur-md text-[#543b23] dark:text-[#F1F2EC] border border-[#d9c7ab] dark:border-[#F1F2EC]/14">
                         {totalApps} Carpetas archivadas
                       </span>
                     </div>
@@ -1254,15 +1254,15 @@ export const CandidateDashboardPage: React.FC<CandidateDashboardPageProps> = ({
                         const ShelfIcon = shelf.icon;
 
                         return (
-                          <div key={shelf.floorNumber} className="w-full p-4 sm:p-6 lg:p-10 space-y-4">
+                          <div key={shelf.floorNumber} className="w-full p-5 sm:p-7 lg:p-8 space-y-4">
                             {/* Cabecera del Piso */}
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-xs border border-amber-600 shadow-[0_2px_0_#92400e] shrink-0">
-                                  <ShelfIcon className="w-4 h-4" />
+                              <div className="flex items-center gap-3.5 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-sm border border-amber-600 shadow-[0_2px_0_#92400e] shrink-0">
+                                  <ShelfIcon className="w-5 h-5" />
                                 </div>
                                 <div className="min-w-0">
-                                  <h3 className="text-sm sm:text-base font-extrabold text-[#3a2818] dark:text-[#F1F2EC]">
+                                  <h3 className="text-base sm:text-lg font-extrabold text-[#3a2818] dark:text-[#F1F2EC]">
                                     {shelf.title}
                                   </h3>
                                   <p className="text-xs text-[#70553b] dark:text-[#777873]">

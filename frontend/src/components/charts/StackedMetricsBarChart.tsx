@@ -4,6 +4,8 @@ import { Application, Vacancy } from '@/types';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
 import type { DonutMode, DonutPerson, DonutSegment } from '@/components/charts/CompanyStatusDonutChart';
 
+export type AffinityBandKey = 'all' | 'lt50' | '50-64' | '65-74' | '75-89' | '90-100';
+
 interface BarColumnItem {
   id: string;
   shortLabel: string;
@@ -14,6 +16,8 @@ interface BarColumnItem {
   barColor?: string;
   openings?: number;
   isLadderPerson?: boolean;
+  peopleCount?: number;
+  bandKey?: Exclude<AffinityBandKey, 'all'>;
 }
 
 interface StackedMetricsBarChartProps {
@@ -24,15 +28,33 @@ interface StackedMetricsBarChartProps {
   applications: Application[];
   companyName: string;
   onClearSegment?: () => void;
+  onSelectAffinityBand?: (band: Exclude<AffinityBandKey, 'all'>, vacancyId?: string) => void;
 }
 
-const AFFINITY_BANDS = [
-  { id: 'band-0', short: '<50%', full: 'Afinidad Baja (<50%)', min: 0, max: 49, color: '#F43F5E' },
-  { id: 'band-1', short: '50-64%', full: 'Afinidad Media-Baja (50–64%)', min: 50, max: 64, color: '#F59E0B' },
-  { id: 'band-2', short: '65-74%', full: 'Afinidad Media (65–74%)', min: 65, max: 74, color: '#0EA5E9' },
-  { id: 'band-3', short: '75-89%', full: 'Afinidad Alta (75–89%)', min: 75, max: 89, color: '#10B981' },
-  { id: 'band-4', short: '90-100%', full: 'Afinidad Sobresaliente (90–100%)', min: 90, max: 100, color: '#84CC16' },
+const AFFINITY_BANDS: Array<{
+  id: string;
+  bandKey: Exclude<AffinityBandKey, 'all'>;
+  short: string;
+  full: string;
+  min: number;
+  max: number;
+  stepHeightPct: number;
+  color: string;
+}> = [
+  { id: 'band-0', bandKey: 'lt50', short: '<50%', full: 'Afinidad Baja (<50%)', min: 0, max: 49, stepHeightPct: 22, color: '#F43F5E' },
+  { id: 'band-1', bandKey: '50-64', short: '50-64%', full: 'Afinidad Media-Baja (50–64%)', min: 50, max: 64, stepHeightPct: 40, color: '#F59E0B' },
+  { id: 'band-2', bandKey: '65-74', short: '65-74%', full: 'Afinidad Media (65–74%)', min: 65, max: 74, stepHeightPct: 58, color: '#0EA5E9' },
+  { id: 'band-3', bandKey: '75-89', short: '75-89%', full: 'Afinidad Alta (75–89%)', min: 75, max: 89, stepHeightPct: 78, color: '#10B981' },
+  { id: 'band-4', bandKey: '90-100', short: '90-100%', full: 'Afinidad Sobresaliente (90–100%)', min: 90, max: 100, stepHeightPct: 98, color: '#84CC16' },
 ];
+
+function getAffinityBandKey(score: number): Exclude<AffinityBandKey, 'all'> {
+  if (score >= 90) return '90-100';
+  if (score >= 75) return '75-89';
+  if (score >= 65) return '65-74';
+  if (score >= 50) return '50-64';
+  return 'lt50';
+}
 
 function computeNiceMax(maxVal: number): { maxTick: number; ticks: number[] } {
   if (maxVal <= 4) {
@@ -77,6 +99,7 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
   applications,
   companyName,
   onClearSegment,
+  onSelectAffinityBand,
 }) => {
   const [chartView, setChartView] = useState<'ladder' | 'quality'>('ladder');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -143,6 +166,7 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
           bottomValue: 0,
           barColor: p.affinity !== null ? getTierColor(score) : '#64748B',
           isLadderPerson: true,
+          bandKey: getAffinityBandKey(score),
         };
       });
       return {
@@ -152,7 +176,7 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
       };
     }
 
-    // Más de 12 personas: escalera por rangos de afinidad ascendentes
+    // Más de 12 personas: escalera ascendente por rangos de afinidad (izquierda abajo -> derecha arriba)
     const bandCols: BarColumnItem[] = AFFINITY_BANDS.map((band) => {
       const count = targetPeople.filter((p) => {
         const s = p.affinity ?? 0;
@@ -163,14 +187,18 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
         shortLabel: band.short,
         fullLabel: band.full,
         subtitle: mode === 'applicants' ? 'Postulantes en este rango' : 'Personal activo en este rango',
-        topValue: count,
+        topValue: band.stepHeightPct,
         bottomValue: 0,
         barColor: band.color,
+        peopleCount: count,
+        bandKey: band.bandKey,
       };
     });
-    const maxBand = bandCols.reduce((acc, c) => Math.max(acc, c.topValue), 0);
-    const nice = computeNiceMax(maxBand);
-    return { columns: bandCols, ...nice };
+    return {
+      columns: bandCols,
+      maxTick: 100,
+      ticks: [100, 75, 50, 25, 0],
+    };
   }, [chartView, useIndividualLadder, targetPeople, vacancies, applications, mode]);
 
   const slotCount = Math.max(columns.length, 6);
@@ -303,7 +331,7 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
             <div className="h-44 flex flex-col justify-between items-end pr-1 text-xs font-semibold text-slate-500 dark:text-slate-400 select-none shrink-0">
               {ticks.map((tick) => (
                 <span key={tick} className="leading-none">
-                  {useIndividualLadder && chartView === 'ladder' ? `${tick}%` : tick}
+                  {chartView === 'ladder' ? `${tick}%` : tick}
                 </span>
               ))}
             </div>
@@ -333,6 +361,8 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
                     const bottomPct = maxTick > 0 ? (col.bottomValue / maxTick) * 100 : 0;
                     const hasBoth = col.topValue > 0 && col.bottomValue > 0;
                     const hasAny = col.topValue + col.bottomValue > 0;
+                    const isEmptyBand = typeof col.peopleCount === 'number' && col.peopleCount === 0;
+                    const canNavigateBand = Boolean(onSelectAffinityBand && chartView === 'ladder' && col.bandKey);
 
                     return (
                       <div
@@ -340,20 +370,54 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
                         onMouseEnter={(e) => handleMouseEnter(e, col.id)}
                         onMouseMove={handleMouseMove}
                         onMouseLeave={handleMouseLeave}
-                        className="h-full flex flex-col justify-end items-center group cursor-default"
+                        onClick={() => {
+                          if (canNavigateBand && col.bandKey && onSelectAffinityBand) {
+                            onSelectAffinityBand(
+                              col.bandKey,
+                              mode === 'applicants' ? activeSegment?.id : undefined
+                            );
+                          }
+                        }}
+                        role={canNavigateBand ? 'button' : undefined}
+                        tabIndex={canNavigateBand ? 0 : undefined}
+                        onKeyDown={(e) => {
+                          if (canNavigateBand && (e.key === 'Enter' || e.key === ' ') && col.bandKey && onSelectAffinityBand) {
+                            e.preventDefault();
+                            onSelectAffinityBand(
+                              col.bandKey,
+                              mode === 'applicants' ? activeSegment?.id : undefined
+                            );
+                          }
+                        }}
+                        className={`h-full flex flex-col justify-end items-center group ${
+                          canNavigateBand ? 'cursor-pointer' : 'cursor-default'
+                        }`}
                       >
                         <div className="w-full max-w-[44px] h-full flex flex-col justify-end items-center">
                           {!hasAny ? (
                             <div className="w-full h-1.5 rounded-full bg-slate-400/30 dark:bg-white/15 transition-colors group-hover:bg-slate-400/50 dark:group-hover:bg-white/30" />
                           ) : (
                             <div
-                              className={`w-full h-full flex flex-col justify-end ${
+                              className={`w-full h-full flex flex-col justify-end items-center ${
                                 hasBoth ? 'gap-1' : ''
                               } transition-transform duration-150 group-hover:scale-[1.04]`}
                             >
+                              {typeof col.peopleCount === 'number' && (
+                                <span
+                                  className={`mb-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold leading-none border ${
+                                    isEmptyBand
+                                      ? 'bg-white/5 text-slate-400 border-white/10 opacity-60'
+                                      : 'bg-slate-900/80 dark:bg-black/60 text-white border-white/15'
+                                  }`}
+                                >
+                                  {col.peopleCount}
+                                </span>
+                              )}
                               {col.topValue > 0 && (
                                 <div
-                                  className="w-full rounded-md sm:rounded-lg shadow-xs transition-[height] duration-300"
+                                  className={`w-full rounded-md sm:rounded-lg shadow-xs transition-[height,opacity] duration-300 ${
+                                    isEmptyBand ? 'opacity-30' : 'opacity-100'
+                                  }`}
                                   style={{
                                     height: `${Math.max(topPct, 8)}%`,
                                     backgroundColor: col.barColor || '#10B981',
@@ -404,11 +468,20 @@ export const StackedMetricsBarChart: React.FC<StackedMetricsBarChartProps> = ({
             <p className="font-bold text-slate-100 truncate">{hoveredCol.fullLabel}</p>
             <p className="text-xs text-slate-400 truncate mb-1.5">{hoveredCol.subtitle}</p>
             {chartView === 'ladder' ? (
-              <div className="flex items-center justify-between gap-2 text-[#C8FF45] font-bold">
-                <span>{hoveredCol.isLadderPerson ? 'Afinidad IA:' : 'Personas:'}</span>
-                <span className="font-mono">
-                  {hoveredCol.isLadderPerson ? `${hoveredCol.topValue}%` : hoveredCol.topValue}
-                </span>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2 text-[#C8FF45] font-bold">
+                  <span>{hoveredCol.isLadderPerson ? 'Afinidad IA:' : 'Personas:'}</span>
+                  <span className="font-mono">
+                    {hoveredCol.isLadderPerson
+                      ? `${hoveredCol.topValue}%`
+                      : (hoveredCol.peopleCount ?? hoveredCol.topValue)}
+                  </span>
+                </div>
+                {onSelectAffinityBand && hoveredCol.bandKey && (
+                  <p className="text-[10px] text-slate-400 pt-0.5 border-t border-white/10">
+                    Clic para ver candidatos en este rango
+                  </p>
+                )}
               </div>
             ) : (
               <>

@@ -519,6 +519,13 @@ export const VacanciesCatalogPage: React.FC<VacanciesCatalogPageProps> = ({
         onClose={() => setViewCompanyProfile(null)}
         companyId={viewCompanyProfile?.id}
         fallbackName={viewCompanyProfile?.name}
+        onApplyVacancy={(vacancyId) => {
+          const target = vacancies.find((v) => v.id === vacancyId);
+          if (target) {
+            setViewCompanyProfile(null);
+            onSelectVacancy(target);
+          }
+        }}
       />
 
       <Footer />

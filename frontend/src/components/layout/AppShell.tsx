@@ -102,7 +102,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         className="app-content-shift flex-1 flex flex-col min-w-0 max-md:!pl-0"
         style={{ paddingLeft: pinned ? SIDEBAR_FULL_PX : SIDEBAR_RAIL_PX }}
       >
-        <header className="h-14 sm:h-16 sticky top-0 z-30 bg-[#F6EEE2]/88 dark:bg-[#090A0C]/84 backdrop-blur-md border-b border-[#C8B193]/80 dark:border-[#F1F2EC]/10 px-3 sm:px-8 flex items-center justify-between gap-3 text-[#3A2818] dark:text-[#F1F2EC]">
+        <header className="h-[68px] sm:h-16 sticky top-0 z-30 bg-[#F6EEE2]/88 dark:bg-[#090A0C]/84 backdrop-blur-md border-b border-[#C8B193]/80 dark:border-[#F1F2EC]/10 px-3.5 sm:px-8 flex items-center justify-between gap-3 text-[#3A2818] dark:text-[#F1F2EC]">
           <div className="flex items-center gap-2 text-xs min-w-0">
             <button
               type="button"

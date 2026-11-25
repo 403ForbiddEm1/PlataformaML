@@ -29,6 +29,7 @@ interface CandidateProfileDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   application: Application | null;
+  currentEmployment?: { companyName: string; role: string } | null;
   onOpenExplainability?: (app: Application) => void;
   onOpenChat?: (app: Application) => void;
   onOpenFullApplication?: (app: Application) => void;
@@ -43,6 +44,7 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
   isOpen,
   onClose,
   application,
+  currentEmployment,
   onOpenExplainability,
   onOpenChat,
   onOpenFullApplication,
@@ -157,7 +159,7 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
         </div>
 
         {/* Cuerpo desplazable del perfil */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto scrollbar-white-pill p-5 sm:p-6 space-y-5">
           {!vis.profileVisible ? (
             <div className="p-6 rounded-2xl border border-dashed border-[#C8B193] dark:border-[#232D42] bg-[#F6EEE2]/60 dark:bg-[#141925] text-center space-y-2">
               <EyeOff className="w-8 h-8 mx-auto text-[#70553B] dark:text-[#9A9B94]" />
@@ -239,6 +241,59 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Situación Laboral Actual */}
+              {(() => {
+                const activeJob =
+                  currentEmployment ||
+                  (application.status === 'Contratado'
+                    ? { companyName: 'Empresa afiliada', role: application.vacancyTitle }
+                    : null);
+
+                return (
+                  <div className="space-y-2.5">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#70553B] dark:text-[#9A9B94] flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5 text-[#0B5D46] dark:text-[#C8FF45]" />
+                      <span>Situación Laboral Actual</span>
+                    </h3>
+                    {activeJob ? (
+                      <div className="p-3.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500/35 space-y-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-emerald-800 dark:text-[#C8FF45]">
+                            Empleado actualmente
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30">
+                            Activo
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-emerald-500/20">
+                          <div>
+                            <span className="text-xs text-[#70553B] dark:text-[#9A9B94] block">Empresa afiliada</span>
+                            <span className="font-bold text-[#3A2818] dark:text-[#F1F2EC]">
+                              {activeJob.companyName}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-[#70553B] dark:text-[#9A9B94] block">Rol / Cargo</span>
+                            <span className="font-bold text-[#3A2818] dark:text-[#F1F2EC]">
+                              {activeJob.role}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#141925] border border-[#C8B193]/70 dark:border-[#232D42] flex items-center justify-between gap-2 text-xs">
+                        <span className="font-semibold text-[#3A2818] dark:text-[#F1F2EC]">
+                          Sin empleo activo registrado actualmente
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-white/15">
+                          Desempleado
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Biografía */}
               {profile?.bio && (

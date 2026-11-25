@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, LogOut } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -17,15 +17,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
 
   return (
     <header className="sticky top-0 z-40 bg-[#090A0C]/88 backdrop-blur-md border-b border-[#F1F2EC]/10 text-[#F1F2EC] transition-colors">
-      <div className="max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-[68px] sm:h-16 flex items-center justify-between gap-2.5 sm:gap-4">
         {/* Brand Mark */}
         <div
           onClick={() => onNavigate('vacancies')}
-          className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none group shrink-0"
+          className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group shrink-0"
         >
-          <BrandLogo className="w-8 h-8 rounded-xl p-1 group-hover:scale-105 transition-transform" />
+          <BrandLogo className="w-9 h-9 sm:w-8 sm:h-8 rounded-xl p-1 group-hover:scale-105 transition-transform" />
           <div className="flex flex-col">
-            <span className="font-heading font-bold text-[#F1F2EC] tracking-tight text-sm sm:text-base leading-none group-hover:text-[#C8FF45] transition-colors">
+            <span className="font-heading font-bold text-[#F1F2EC] tracking-tight text-base leading-none group-hover:text-[#C8FF45] transition-colors">
               PlataformaML
             </span>
             <span className="hidden sm:block text-xs tracking-[0.1em] font-mono-tabular font-semibold text-[#C8FF45] uppercase mt-1">
@@ -86,14 +86,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 onClick={() => onNavigate('login')}
-                className="min-h-[40px] text-xs font-semibold text-[#F1F2EC] hover:text-[#C8FF45] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer"
+                className="min-h-[40px] text-xs font-semibold text-[#F1F2EC] hover:text-[#C8FF45] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
-                Ingresar
+                <LogIn className="w-4 h-4 text-[#C8FF45] shrink-0" />
+                <span>Ingresar</span>
               </button>
               <button
                 type="button"
                 onClick={() => onNavigate('login')}
-                className="min-h-[40px] btn-3d-primary text-xs py-1.5 px-3 sm:px-3.5"
+                className="hidden! sm:inline-flex! min-h-[40px] btn-3d-primary text-xs py-1.5 px-3 sm:px-3.5"
               >
                 Registrarme
               </button>

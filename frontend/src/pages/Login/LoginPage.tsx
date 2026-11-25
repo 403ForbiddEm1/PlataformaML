@@ -734,29 +734,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({
          ===================================================================== */}
       <div className="relative z-10 w-full flex-1 min-h-0 flex flex-col border-x border-[#090A0C]/16 dark:border-[#F1F2EC]/14">
         {/* TOP NAVIGATION BAR (Shares Top/Left/Right Borders with Auth Stage) */}
-        <header className="w-full px-5 sm:px-8 lg:px-12 py-3 sm:py-3.5 border-b border-[#090A0C]/16 dark:border-[#F1F2EC]/14 bg-[#F1F2EC]/45 dark:bg-[#090A0C]/45 backdrop-blur-xl flex items-center justify-between gap-3 shrink-0">
+        <header className="w-full min-h-[68px] sm:min-h-0 px-4 sm:px-8 lg:px-12 py-3.5 border-b border-[#090A0C]/16 dark:border-[#F1F2EC]/14 bg-[#F1F2EC]/45 dark:bg-[#090A0C]/45 backdrop-blur-xl flex items-center justify-between gap-3 shrink-0">
           <div
             onClick={onGoToVacancies}
             className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group min-w-0"
           >
-            <BrandLogo className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl p-1 sm:p-1.5 group-hover:scale-105 transition-transform" />
+            <BrandLogo className="w-9 h-9 rounded-xl p-1 sm:p-1.5 group-hover:scale-105 transition-transform" />
             <div className="flex flex-col min-w-0">
-              <span className="font-heading font-bold text-[#090A0C] dark:text-[#F1F2EC] text-base sm:text-lg leading-none tracking-tight group-hover:text-[#4C6FFF] dark:group-hover:text-[#C8FF45] transition-colors truncate">
+              <span className="font-heading font-bold text-[#090A0C] dark:text-[#F1F2EC] text-lg leading-none tracking-tight group-hover:text-[#4C6FFF] dark:group-hover:text-[#C8FF45] transition-colors truncate">
                 PlataformaML
               </span>
-              <span className="text-[9px] sm:text-[10px] font-mono-tabular tracking-[0.12em] sm:tracking-[0.14em] font-semibold text-[#4C6FFF] dark:text-[#C8FF45] uppercase mt-0.5 sm:mt-1 truncate">
+              <span className="hidden sm:block text-[10px] font-mono-tabular tracking-[0.14em] font-semibold text-[#4C6FFF] dark:text-[#C8FF45] uppercase mt-1 truncate">
                 ECOSISTEMA MULTI-EMPRESA
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <ThemeToggle />
             {onGoToVacancies && (
               <button
                 type="button"
                 onClick={onGoToVacancies}
-                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-medium text-[#090A0C] dark:text-[#F1F2EC] bg-[#090A0C]/8 dark:bg-[#F1F2EC]/10 hover:bg-[#090A0C]/12 dark:hover:bg-[#F1F2EC]/15 border border-[#090A0C]/20 dark:border-[#F1F2EC]/16 hover:border-[#4C6FFF]/60 dark:hover:border-[#C8FF45]/50 backdrop-blur-md shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#0f172a] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 sm:gap-2 min-h-[42px] sm:min-h-0 px-3.5 py-2 rounded-xl text-sm sm:text-xs font-medium text-[#090A0C] dark:text-[#F1F2EC] bg-[#090A0C]/8 dark:bg-[#F1F2EC]/10 hover:bg-[#090A0C]/12 dark:hover:bg-[#F1F2EC]/15 border border-[#090A0C]/20 dark:border-[#F1F2EC]/16 hover:border-[#4C6FFF]/60 dark:hover:border-[#C8FF45]/50 backdrop-blur-md shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#0f172a] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5 text-[#4C6FFF] dark:text-[#C8FF45]" />
                 <span className="hidden sm:inline">Explorar convocatorias</span>
@@ -784,11 +784,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               {!isRecoverMode ? (
                 <>
                   {/* Card Header (Clean, without PORTAL DE ACCESO UNIFICADO) */}
-                  <div className="space-y-1.5">
-                    <h1 className="font-heading text-[26px] sm:text-[32px] xl:text-[36px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
+                  <div className="space-y-2">
+                    <h1 className="font-heading text-[32px] sm:text-[32px] xl:text-[36px] font-bold text-[#090A0C] dark:text-[#F1F2EC] tracking-tight leading-tight">
                       Iniciar sesión
                     </h1>
-                    <p className="text-xs sm:text-sm text-[#090A0C]/85 dark:text-[#F1F2EC]/90 font-normal leading-snug">
+                    <p className="text-sm text-[#090A0C]/85 dark:text-[#F1F2EC]/90 font-normal leading-snug">
                       Ingresa tus credenciales para acceder a tu expediente, mesa de evaluación o consola corporativa.
                     </p>
                   </div>
@@ -869,7 +869,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <button
                         type="button"
                         onClick={() => openGoogleAuthFlow('login')}
-                        className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-sm border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2.5 cursor-pointer"
+                        className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-white hover:bg-[#EEF2FF] dark:bg-[#141821] dark:hover:bg-[#1a2238] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-sm border border-[#090A0C]/20 dark:border-white/18 hover:border-[#4C6FFF] dark:hover:border-[#4C6FFF] shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:shadow-[0_4px_0_#1e40af] dark:hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 inline-flex items-center justify-center gap-2.5 cursor-pointer"
                       >
                         <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -892,18 +892,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <button
                         type="button"
                         onClick={openCandidateRegister}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#090A0C] hover:text-[#090A0C] dark:text-[#C8FF45] dark:hover:text-white !bg-white/85 hover:!bg-white dark:!bg-[#12151C]/85 dark:hover:!bg-[#1B202B] backdrop-blur-xs border border-[#090A0C]/18 dark:border-[#C8FF45]/45 hover:border-[#4C6FFF] dark:hover:border-[#C8FF45] shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#3f6212] hover:shadow-[0_4px_0_#475569] dark:hover:shadow-[0_4px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer group"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#3f6212] hover:text-[#1a2e05] dark:text-[#C8FF45] dark:hover:text-white !bg-white/85 hover:!bg-[#f4fce3] dark:!bg-[#12151C]/85 dark:hover:!bg-[#1B202B] backdrop-blur-xs border border-[#65a30d]/60 dark:border-[#C8FF45]/45 hover:border-[#4d7c0f] dark:hover:border-[#C8FF45] shadow-[0_3px_0_#3f6212] hover:shadow-[0_4px_0_#3f6212] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer group"
                       >
-                        <UserPlus className="w-4 h-4 text-[#4C6FFF] dark:text-[#C8FF45] group-hover:text-[#090A0C] dark:group-hover:text-white shrink-0" />
+                        <UserPlus className="w-4 h-4 text-[#4d7c0f] dark:text-[#C8FF45] group-hover:text-[#1a2e05] dark:group-hover:text-white shrink-0" />
                         <span>Soy Candidato</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={openCompanyRegister}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-white hover:text-white bg-[#4C6FFF] hover:bg-[#6180FF] border border-[#2563eb] shadow-[0_3px_0_#1e40af] hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-semibold text-[#090A0C] hover:text-[#090A0C] dark:text-[#7FA0FF] dark:hover:text-white !bg-white/85 hover:!bg-white dark:!bg-[#12151C]/85 dark:hover:!bg-[#1B202B] backdrop-blur-xs border border-[#4C6FFF]/45 dark:border-[#4C6FFF]/60 hover:border-[#4C6FFF] dark:hover:border-[#6180FF] shadow-[0_3px_0_#1e40af] hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all duration-150 cursor-pointer group"
                       >
-                        <Building2 className="w-4 h-4 text-white shrink-0" />
+                        <Building2 className="w-4 h-4 text-[#4C6FFF] dark:text-[#7FA0FF] group-hover:text-[#2563eb] dark:group-hover:text-white shrink-0" />
                         <span>Afiliar Empresa</span>
                       </button>
                     </div>
@@ -946,7 +946,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
 
                     {/* Selector de método: Correo vs Código de Telegram */}
-                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#090A0C]/6 dark:bg-[#F1F2EC]/8 border border-[#090A0C]/12 dark:border-[#F1F2EC]/12">
+                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-white/75 dark:bg-[#090A0C]/70 backdrop-blur-md border border-[#090A0C]/15 dark:border-[#F1F2EC]/20">
                       <button
                         type="button"
                         onClick={() => {
@@ -956,7 +956,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         className={`press py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
                           recoverMethod === 'CORREO'
                             ? 'bg-[#0B5D46] text-white dark:bg-[#C8FF45] dark:text-[#090A0C]'
-                            : 'text-[#777873] hover:text-[#090A0C] dark:hover:text-[#F1F2EC]'
+                            : 'text-[#090A0C]/85 dark:text-[#F1F2EC]/95 hover:text-[#090A0C] dark:hover:text-white'
                         }`}
                       >
                         <Mail className="w-3.5 h-3.5" />
@@ -971,7 +971,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         className={`press py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
                           recoverMethod === 'TELEGRAM'
                             ? 'bg-[#229ED9] text-white'
-                            : 'text-[#777873] hover:text-[#090A0C] dark:hover:text-[#F1F2EC]'
+                            : 'text-[#090A0C]/85 dark:text-[#F1F2EC]/95 hover:text-[#090A0C] dark:hover:text-white'
                         }`}
                       >
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
@@ -1308,7 +1308,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <button
                       type="button"
                       onClick={() => openGoogleAuthFlow('register')}
-                      className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#141821] dark:hover:bg-[#1C2230] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-xs border border-[#090A0C]/20 dark:border-white/18 shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
+                      className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-[#EEF2FF] dark:bg-[#141821] dark:hover:bg-[#1a2238] text-[#090A0C] dark:text-[#F1F2EC] font-heading font-semibold text-xs border border-[#090A0C]/20 dark:border-white/18 hover:border-[#4C6FFF] dark:hover:border-[#4C6FFF] shadow-[0_3px_0_#64748b] dark:shadow-[0_3px_0_#020617] hover:shadow-[0_4px_0_#1e40af] dark:hover:shadow-[0_4px_0_#1e40af] hover:-translate-y-[1px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
                     >
                       <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -1448,7 +1448,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   {/* Telemetry Card: Two Diagonal Corners Unrounded + Minimal 3D Tilt */}
                   <TiltGlassCard
                     maxTiltDeg={2.4}
-                    className="rounded-tl-none rounded-br-none rounded-tr-2xl rounded-bl-2xl p-4 xl:p-5 space-y-3 !bg-[#F1F2EC]/78 dark:!bg-[#090A0C]/68"
+                    className="rounded-tl-none rounded-br-none rounded-tr-2xl rounded-bl-2xl p-4 xl:p-5 space-y-3 !bg-white/35 dark:!bg-white/[0.07] !backdrop-blur-md !border-white/55 dark:!border-white/20 !shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_12px_32px_rgba(0,0,0,0.25)]"
                   >
                     <div className="flex items-center justify-between border-b border-[#090A0C]/10 dark:border-[#F1F2EC]/10 pb-2.5 relative z-10">
                       <div className="flex items-center gap-2.5">
@@ -1539,9 +1539,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </main>
 
         {/* BOTTOM MINIMALIST ATTRIBUTION (Shares Bottom/Left/Right Borders, No PALETA text) */}
-        <footer className="w-full px-5 sm:px-8 lg:px-12 py-2.5 sm:py-3 border-t border-[#090A0C]/16 dark:border-[#F1F2EC]/14 bg-[#F1F2EC]/45 dark:bg-[#090A0C]/45 backdrop-blur-xl flex items-center justify-between gap-2 text-[11px] text-[#777873] shrink-0">
-          <span>© 2026 PlataformaML · Sistema Inteligente de Evaluación Curricular</span>
-          <span className="hidden sm:inline font-mono-tabular text-[10px]">JWT · XAI · MULTI-TENANT</span>
+        <footer className="w-full px-5 sm:px-8 lg:px-12 py-2.5 sm:py-3 border-t border-[#090A0C]/16 dark:border-[#F1F2EC]/14 bg-[#F1F2EC]/45 dark:bg-[#090A0C]/45 backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[#777873] shrink-0">
+          <span className="text-center sm:text-left">© 2026 PlataformaML · Sistema Inteligente de Evaluación Curricular</span>
+          <div className="flex flex-wrap items-center justify-center gap-3.5 sm:gap-4">
+            <a
+              href="mailto:contacto@plataformaml.com"
+              className="inline-flex items-center gap-1.5 font-medium hover:text-[#090A0C] dark:hover:text-[#C8FF45] transition-colors"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Contacto</span>
+            </a>
+            <a
+              href="https://github.com/403ForbiddEm1/PlataformaML"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Repositorio de PlataformaML en GitHub"
+              className="inline-flex items-center gap-1.5 font-semibold hover:text-[#090A0C] dark:hover:text-[#C8FF45] transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="w-3.5 h-3.5">
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                />
+              </svg>
+              <span>GitHub</span>
+            </a>
+            <span className="hidden lg:inline font-mono-tabular text-[10px]">JWT · XAI · MULTI-TENANT</span>
+          </div>
         </footer>
 
         {/* =====================================================================

@@ -892,20 +892,18 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?:
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-5 shrink-0 bg-[#090A0C]/80 backdrop-blur-md p-4 rounded-xl border border-[#F1F2EC]/12">
-                    <div className="text-center px-1">
-                      <span className="text-2xl font-mono-tabular font-bold block text-[#C8FF45]">{activeVacancies.length}</span>
-                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Activas</span>
+                  <div className="grid grid-cols-3 divide-x divide-[#F1F2EC]/12 w-full md:w-auto md:min-w-[330px] shrink-0 bg-[#090A0C]/80 backdrop-blur-md py-3.5 px-2 sm:p-4 rounded-xl border border-[#F1F2EC]/12">
+                    <div className="text-center px-2 sm:px-4 min-w-0">
+                      <span className="text-xl sm:text-2xl font-mono-tabular font-bold block text-[#C8FF45]">{activeVacancies.length}</span>
+                      <span className="block text-[10px] sm:text-xs font-mono-tabular uppercase tracking-normal sm:tracking-wider text-[#777873] truncate">Activas</span>
                     </div>
-                    <div className="w-px h-8 bg-[#F1F2EC]/12" />
-                    <div className="text-center px-1">
-                      <span className="text-2xl font-mono-tabular font-bold block text-[#F1F2EC]">{inactiveVacancies.length}</span>
-                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Inactivas</span>
+                    <div className="text-center px-2 sm:px-4 min-w-0">
+                      <span className="text-xl sm:text-2xl font-mono-tabular font-bold block text-[#F1F2EC]">{inactiveVacancies.length}</span>
+                      <span className="block text-[10px] sm:text-xs font-mono-tabular uppercase tracking-normal sm:tracking-wider text-[#777873] truncate">Inactivas</span>
                     </div>
-                    <div className="w-px h-8 bg-[#F1F2EC]/12" />
-                    <div className="text-center px-1">
-                      <span className="text-2xl font-mono-tabular font-bold block text-[#4C6FFF]">{applications.length}</span>
-                      <span className="text-xs font-mono-tabular uppercase tracking-wider text-[#777873]">Postulaciones</span>
+                    <div className="text-center px-2 sm:px-4 min-w-0">
+                      <span className="text-xl sm:text-2xl font-mono-tabular font-bold block text-[#4C6FFF]">{applications.length}</span>
+                      <span className="block text-[10px] sm:text-xs font-mono-tabular uppercase tracking-normal sm:tracking-wider text-[#777873] truncate">Postulaciones</span>
                     </div>
                   </div>
                 </div>

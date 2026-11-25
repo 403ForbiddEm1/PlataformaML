@@ -72,6 +72,7 @@ interface CompanyPublicProfileModalProps {
   fallbackName?: string;
   fallbackCompany?: Partial<PublicCompanyData> | null;
   readOnlyNotice?: string;
+  onApplyVacancy?: (vacancyId: string) => void;
 }
 
 export const CompanyPublicProfileModal: React.FC<CompanyPublicProfileModalProps> = ({
@@ -81,6 +82,7 @@ export const CompanyPublicProfileModal: React.FC<CompanyPublicProfileModalProps>
   fallbackName,
   fallbackCompany,
   readOnlyNotice = 'Perfil público de empresa · Solo lectura',
+  onApplyVacancy,
 }) => {
   const [company, setCompany] = useState<PublicCompanyData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -275,18 +277,32 @@ export const CompanyPublicProfileModal: React.FC<CompanyPublicProfileModalProps>
             </h4>
             <div className="divide-y divide-[#DED7C8]/60 dark:divide-slate-800">
               {company.vacantes.map((v) => (
-                <div key={v.id} className="py-2 flex items-center justify-between gap-2 text-xs">
+                <div key={v.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 dark:text-slate-100 truncate">{v.titulo}</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {v.departamento || 'General'} · {v.ubicacion || 'Remoto'}
                     </p>
                   </div>
-                  {v.cantidadVacantes && (
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/12 text-emerald-700 dark:text-[#C8FF45] text-[10px] font-bold shrink-0">
-                      {v.cantidadVacantes} {v.cantidadVacantes === 1 ? 'plaza' : 'plazas'}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {v.cantidadVacantes && (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/12 text-emerald-700 dark:text-[#C8FF45] text-[10px] font-bold">
+                        {v.cantidadVacantes} {v.cantidadVacantes === 1 ? 'plaza' : 'plazas'}
+                      </span>
+                    )}
+                    {onApplyVacancy && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onApplyVacancy(v.id);
+                        }}
+                        className="press px-3 py-1.5 rounded-lg bg-[#C8FF45] hover:bg-[#D5FF6B] text-[#090A0C] font-bold text-xs border border-[#84cc16] shadow-[0_2px_0_#3f6212] cursor-pointer"
+                      >
+                        Postular
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

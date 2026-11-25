@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Briefcase, RotateCcw, Sparkles, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Briefcase, Check, ChevronDown, RotateCcw, Sparkles, Users } from 'lucide-react';
 import { Application, Employee, Vacancy } from '@/types';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
 
@@ -184,6 +184,7 @@ interface CompanyStatusDonutChartProps {
   pinnedSegmentId: string | null;
   onHoverSegment: (id: string | null) => void;
   onTogglePinSegment: (id: string | null) => void;
+  onSelectPerson?: (person: DonutPerson) => void;
   companyName: string;
 }
 
@@ -199,8 +200,32 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
   pinnedSegmentId,
   onHoverSegment,
   onTogglePinSegment,
+  onSelectPerson,
   companyName,
 }) => {
+  const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileDropdownOpen) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(e.target as Node)) {
+        setMobileDropdownOpen(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [mobileDropdownOpen]);
+
   const activeId = hoveredSegmentId ?? pinnedSegmentId;
   const activeSegment = useMemo(
     () => segments.find((s) => s.id === activeId) ?? null,
@@ -282,6 +307,7 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
             onClick={() => {
               onModeChange('applicants');
               onTogglePinSegment(null);
+              setMobileDropdownOpen(false);
             }}
             className={`min-h-[38px] px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
               mode === 'applicants'
@@ -299,6 +325,7 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
             onClick={() => {
               onModeChange('employees');
               onTogglePinSegment(null);
+              setMobileDropdownOpen(false);
             }}
             className={`min-h-[38px] px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
               mode === 'employees'
@@ -398,7 +425,7 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
             </div>
           </div>
 
-          {/* Leyenda interactiva compacta */}
+          {/* Leyenda interactiva: selector único en móvil (90% centrado) + píldoras en escritorio */}
           {segments.length === 0 ? (
             <p className="relative z-10 text-xs text-slate-500 dark:text-slate-400 text-center">
               {mode === 'applicants'
@@ -406,32 +433,133 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
                 : 'Aún no hay personal contratado activo registrado.'}
             </p>
           ) : (
-            <div className="relative z-10 w-full flex flex-wrap justify-center gap-1.5">
-              {segments.map((seg) => {
-                const isSelected = activeId === seg.id;
-                return (
-                  <button
-                    key={seg.id}
-                    type="button"
-                    onMouseEnter={() => onHoverSegment(seg.id)}
-                    onMouseLeave={() => onHoverSegment(null)}
-                    onClick={() => onTogglePinSegment(pinnedSegmentId === seg.id ? null : seg.id)}
-                    className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-slate-900 text-white dark:bg-white dark:text-[#090A0C] border-transparent'
-                        : 'bg-white/50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-200 border-slate-300/60 dark:border-white/15 hover:border-slate-400'
-                    }`}
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: seg.color }}
+            <>
+              {/* Móvil: único input desplegable ocupando el 90% centrado */}
+              <div ref={mobileDropdownRef} className="relative z-20 w-[90%] mx-auto md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileDropdownOpen((prev) => !prev)}
+                  aria-expanded={mobileDropdownOpen}
+                  aria-haspopup="listbox"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2.5 border border-slate-300/80 dark:border-white/15 bg-white/85 dark:bg-[#111318] text-slate-900 dark:text-slate-100 text-sm font-semibold shadow-xs cursor-pointer transition-colors hover:border-slate-400 dark:hover:border-white/30"
+                >
+                  <span className="flex items-center gap-2.5 min-w-0 flex-1 text-left">
+                    {activeSegment ? (
+                      <>
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: activeSegment.color }}
+                        />
+                        <span className="truncate">{activeSegment.label}</span>
+                      </>
+                    ) : (
+                      <span className="truncate text-slate-600 dark:text-slate-300">
+                        Vista general (Todas las secciones)
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900/10 dark:bg-white/10 text-slate-800 dark:text-slate-200">
+                      {activeSegment ? `${activeSegment.pct}%` : `${totalCount}`}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-500 dark:text-slate-400 transition-transform duration-200 ${
+                        mobileDropdownOpen ? 'rotate-180' : ''
+                      }`}
                     />
-                    <span className="truncate max-w-[115px]">{seg.label}</span>
-                    <span className="font-mono font-bold">{seg.pct}%</span>
-                  </button>
-                );
-              })}
-            </div>
+                  </span>
+                </button>
+
+                {mobileDropdownOpen && (
+                  <div
+                    role="listbox"
+                    aria-label="Seleccionar sección"
+                    className="mt-2 w-full rounded-xl border border-slate-300/80 dark:border-white/15 bg-white dark:bg-[#111318] shadow-xl overflow-hidden divide-y divide-slate-200/70 dark:divide-white/10"
+                  >
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={!pinnedSegmentId}
+                      onClick={() => {
+                        onTogglePinSegment(null);
+                        setMobileDropdownOpen(false);
+                      }}
+                      className={`w-full px-3.5 py-3 flex items-center justify-between gap-2.5 text-left text-sm cursor-pointer transition-colors ${
+                        !pinnedSegmentId
+                          ? 'bg-[#C8FF45]/15 text-slate-900 dark:text-[#C8FF45] font-bold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] font-medium'
+                      }`}
+                    >
+                      <span className="truncate">Vista general (Todas)</span>
+                      <span className="flex items-center gap-2 shrink-0 font-mono text-xs font-bold">
+                        <span>{totalCount}</span>
+                        {!pinnedSegmentId && <Check className="w-4 h-4" />}
+                      </span>
+                    </button>
+                    {segments.map((seg) => {
+                      const isSelected = pinnedSegmentId === seg.id;
+                      return (
+                        <button
+                          key={seg.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => {
+                            onTogglePinSegment(isSelected ? null : seg.id);
+                            setMobileDropdownOpen(false);
+                          }}
+                          className={`w-full px-3.5 py-3 flex items-center justify-between gap-2.5 text-left text-sm cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-[#C8FF45]/15 text-slate-900 dark:text-[#C8FF45] font-bold'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] font-medium'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ backgroundColor: seg.color }}
+                            />
+                            <span className="break-words leading-snug">{seg.label}</span>
+                          </span>
+                          <span className="flex items-center gap-2 shrink-0 font-mono text-xs font-bold">
+                            <span>{seg.pct}%</span>
+                            {isSelected && <Check className="w-4 h-4" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Escritorio: lista de píldoras */}
+              <div className="relative z-10 hidden md:flex w-full flex-wrap justify-center gap-1.5">
+                {segments.map((seg) => {
+                  const isSelected = activeId === seg.id;
+                  return (
+                    <button
+                      key={seg.id}
+                      type="button"
+                      onMouseEnter={() => onHoverSegment(seg.id)}
+                      onMouseLeave={() => onHoverSegment(null)}
+                      onClick={() => onTogglePinSegment(pinnedSegmentId === seg.id ? null : seg.id)}
+                      className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-slate-900 text-white dark:bg-white dark:text-[#090A0C] border-transparent'
+                          : 'bg-white/50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-200 border-slate-300/60 dark:border-white/15 hover:border-slate-400'
+                      }`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: seg.color }}
+                      />
+                      <span className="truncate max-w-[115px]">{seg.label}</span>
+                      <span className="font-mono font-bold">{seg.pct}%</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </TiltGlassCard>
 
@@ -501,16 +629,18 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
               {/* Lista compacta de usuarios en esta sección con su afinidad */}
               <div className="space-y-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
-                  {mode === 'applicants' ? 'Postulantes en esta convocatoria' : 'Personal en este rol'}
+                  {mode === 'applicants' ? 'Postulantes en esta convocatoria (clic para ver perfil)' : 'Personal en este rol (clic para ver perfil)'}
                 </span>
-                <div className="max-h-[148px] overflow-y-auto pr-1 space-y-1.5">
+                <div className="max-h-[148px] overflow-y-auto scrollbar-white-pill pr-1.5 space-y-1.5">
                   {activeSegment.people.map((person) => (
-                    <div
+                    <button
                       key={person.id}
-                      className="px-3 py-2 rounded-xl bg-white/60 dark:bg-white/[0.05] border border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-3 text-xs"
+                      type="button"
+                      onClick={() => onSelectPerson?.(person)}
+                      className="w-full text-left px-3 py-2 rounded-xl bg-white/60 dark:bg-white/[0.05] hover:bg-white/90 dark:hover:bg-white/[0.11] border border-slate-200/60 dark:border-white/10 hover:border-[#4C6FFF]/50 dark:hover:border-[#C8FF45]/50 flex items-center justify-between gap-3 text-xs transition-colors cursor-pointer group"
                     >
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                        <p className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#0B5D46] dark:group-hover:text-[#C8FF45] truncate transition-colors">
                           {person.name}
                         </p>
                         <p className="text-xs text-slate-600 dark:text-slate-400 truncate">
@@ -531,7 +661,7 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
                         <Sparkles className="w-3 h-3" />
                         <span>{person.affinity !== null ? `${person.affinity}%` : 'N/D'}</span>
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -591,7 +721,7 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
                 </div>
               </div>
 
-              {/* Desglose porcentual resumido por categoría */}
+              {/* Desglose porcentual resumido por categoría (sin hover para no cambiar al pasar el mouse) */}
               {segments.length === 0 ? (
                 <div className="p-4 rounded-xl border border-dashed border-slate-300/70 dark:border-white/15 text-center text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   {mode === 'applicants'
@@ -599,15 +729,13 @@ export const CompanyStatusDonutChart: React.FC<CompanyStatusDonutChartProps> = (
                     : 'Cuando contrates candidatos en la empresa verás aquí su proporción por rol de trabajo.'}
                 </div>
               ) : (
-                <div className="max-h-[140px] overflow-y-auto pr-1 space-y-2">
+                <div className="max-h-[140px] overflow-y-auto scrollbar-white-pill pr-1.5 space-y-2">
                   {segments.map((seg) => (
                     <button
                       key={seg.id}
                       type="button"
-                      onMouseEnter={() => onHoverSegment(seg.id)}
-                      onMouseLeave={() => onHoverSegment(null)}
                       onClick={() => onTogglePinSegment(seg.id)}
-                      className="w-full text-left px-3 py-2 rounded-xl bg-white/50 dark:bg-white/[0.04] hover:bg-white/80 dark:hover:bg-white/[0.09] border border-slate-200/60 dark:border-white/10 transition-colors cursor-pointer space-y-1.5"
+                      className="w-full text-left px-3 py-2 rounded-xl bg-white/50 dark:bg-white/[0.04] hover:bg-white/75 dark:hover:bg-white/[0.08] border border-slate-200/60 dark:border-white/10 transition-colors cursor-pointer space-y-1.5"
                     >
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <span className="font-bold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2 truncate">

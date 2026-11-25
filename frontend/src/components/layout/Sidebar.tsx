@@ -224,7 +224,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         data-expanded={expanded ? 'true' : 'false'}
-        className={asideClasses}
+        className={`${asideClasses} max-md:!w-[min(86vw,312px)]`}
         style={{ width: FULL }}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
@@ -324,9 +324,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {sections.map((section, si) => (
             <div key={si} className="py-1 relative z-10">
               {section.title && (
-                <div className="h-7 flex items-center">
+                <div className="h-8 md:h-7 flex items-center">
                   <span
-                    className={`px-5 text-[10px] font-mono-tabular font-semibold uppercase tracking-[0.16em] text-[#B8A286] dark:text-[#777873] ${labelClass(expanded)}`}
+                    className={`px-5 text-[11px] md:text-[10px] font-mono-tabular font-semibold uppercase tracking-[0.16em] text-[#B8A286] dark:text-[#777873] ${labelClass(expanded)}`}
                     style={{ paddingLeft: RAIL - 20 }}
                   >
                     {section.title}
@@ -351,7 +351,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }}
                     title={expanded ? undefined : item.label}
                     aria-current={active ? 'page' : undefined}
-                    className={`relative w-full h-11 flex items-center text-left cursor-pointer group transition-colors duration-150 ${
+                    className={`relative w-full h-13 md:h-11 flex items-center text-left cursor-pointer group transition-colors duration-150 ${
                       active
                         ? 'text-[#F6EEE2] dark:text-[#F1F2EC]'
                         : 'text-[#C8B193] dark:text-[#9A9B94] hover:text-[#F6EEE2] dark:hover:text-[#F1F2EC]'
@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <span className="relative flex items-center justify-center shrink-0" style={{ width: RAIL }}>
                       <Icon
-                        className={`w-[18px] h-[18px] transition-transform duration-200 group-hover:scale-110 group-active:scale-95 ${
+                        className={`w-5 h-5 md:w-[18px] md:h-[18px] transition-transform duration-200 group-hover:scale-110 group-active:scale-95 ${
                           active ? 'text-[#C8FF45]' : 'group-hover:text-[#C8FF45]'
                         }`}
                         strokeWidth={active ? 2.2 : 1.85}
@@ -369,7 +369,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       )}
                     </span>
                     <span
-                      className={`flex-1 min-w-0 text-[13px] font-semibold truncate ${labelClass(expanded)}`}
+                      className={`flex-1 min-w-0 text-sm md:text-[13px] font-semibold truncate ${labelClass(expanded)}`}
                     >
                       {item.label}
                     </span>
@@ -407,12 +407,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onMobileClose();
               }}
               title={expanded ? undefined : 'Contactar con Soporte'}
-              className="press w-full h-11 flex items-center text-left cursor-pointer group border-b border-[#C8B193]/15 dark:border-[#F1F2EC]/8 bg-[#0B5D46]/25 hover:bg-[#0B5D46]/45 dark:bg-[#4C6FFF]/15 dark:hover:bg-[#4C6FFF]/25 text-[#F6EEE2] dark:text-[#F1F2EC]"
+              className="press w-full h-13 md:h-11 flex items-center text-left cursor-pointer group border-b border-[#C8B193]/15 dark:border-[#F1F2EC]/8 bg-[#0B5D46]/25 hover:bg-[#0B5D46]/45 dark:bg-[#4C6FFF]/15 dark:hover:bg-[#4C6FFF]/25 text-[#F6EEE2] dark:text-[#F1F2EC]"
             >
               <span className="flex items-center justify-center shrink-0" style={{ width: RAIL }}>
                 <LifeBuoy className="w-[18px] h-[18px] text-[#C8FF45] transition-transform duration-200 group-hover:rotate-12 group-hover:scale-110" />
               </span>
-              <span className={`flex-1 min-w-0 text-xs font-bold truncate ${labelClass(expanded)}`}>
+              <span className={`flex-1 min-w-0 text-[13px] md:text-xs font-bold truncate ${labelClass(expanded)}`}>
                 Contactar con Soporte
               </span>
               <span
@@ -425,7 +425,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Usuario activo */}
           {userName && (
-            <div className="flex items-center h-13">
+            <div className="flex items-center h-15 md:h-13">
               <span className="flex items-center justify-center shrink-0" style={{ width: RAIL }}>
                 {userAvatarUrl ? (
                   <img
@@ -521,13 +521,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onLogout}
-            className="press w-full h-11 flex items-center text-rose-300 hover:text-white hover:bg-rose-600/85 cursor-pointer border-t border-[#C8B193]/15 dark:border-[#F1F2EC]/8"
+            className="press w-full h-13 md:h-11 flex items-center text-rose-300 hover:text-white hover:bg-rose-600/85 cursor-pointer border-t border-[#C8B193]/15 dark:border-[#F1F2EC]/8"
             title={expanded ? undefined : 'Cerrar sesión'}
           >
             <span className="flex items-center justify-center shrink-0" style={{ width: RAIL }}>
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-[18px] h-[18px] md:w-4 md:h-4" />
             </span>
-            <span className={`text-xs font-bold ${labelClass(expanded)}`}>Cerrar sesión</span>
+            <span className={`text-[13px] md:text-xs font-bold ${labelClass(expanded)}`}>Cerrar sesión</span>
           </button>
         </div>
       </aside>

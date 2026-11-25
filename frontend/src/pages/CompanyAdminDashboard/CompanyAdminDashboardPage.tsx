@@ -20,7 +20,7 @@ import { type NotifyChannel } from '@/services/applications.service';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { TiltGlassCard } from '@/components/ui/TiltGlassCard';
-import { StackedMetricsBarChart } from '@/components/charts/StackedMetricsBarChart';
+import { StackedMetricsBarChart, type AffinityBandKey } from '@/components/charts/StackedMetricsBarChart';
 import {
   CompanyStatusDonutChart,
   buildCompanyDonutSegments,
@@ -187,6 +187,7 @@ export const CompanyAdminDashboardPage: React.FC<{
   // Candidates Search & Filter
   const [candidateSearch, setCandidateSearch] = useState('');
   const [vacancyFilter, setVacancyFilter] = useState('all');
+  const [affinityFilter, setAffinityFilter] = useState<AffinityBandKey>('all');
   const [expandedNotifyAppId, setExpandedNotifyAppId] = useState<string | null>(null);
   const [autoNotifyChannel, setAutoNotifyChannel] = useState<NotifyChannel>('AMBOS');
   const [isBulkRejecting, setIsBulkRejecting] = useState(false);
@@ -431,7 +432,15 @@ export const CompanyAdminDashboardPage: React.FC<{
       a.candidateEmail.toLowerCase().includes(candidateSearch.toLowerCase()) ||
       a.vacancyTitle.toLowerCase().includes(candidateSearch.toLowerCase());
     const matchesVacancy = vacancyFilter === 'all' || a.vacancyId === vacancyFilter;
-    return matchesSearch && matchesVacancy;
+    const score = typeof a.mlScore === 'number' ? a.mlScore : 0;
+    const matchesAffinity =
+      affinityFilter === 'all' ||
+      (affinityFilter === 'lt50' && score < 50) ||
+      (affinityFilter === '50-64' && score >= 50 && score <= 64) ||
+      (affinityFilter === '65-74' && score >= 65 && score <= 74) ||
+      (affinityFilter === '75-89' && score >= 75 && score <= 89) ||
+      (affinityFilter === '90-100' && score >= 90);
+    return matchesSearch && matchesVacancy && matchesAffinity;
   });
 
   const sidebarSections: SidebarSection[] = [
@@ -598,6 +607,49 @@ export const CompanyAdminDashboardPage: React.FC<{
               pinnedSegmentId={pinnedDonutId}
               onHoverSegment={setHoveredDonutId}
               onTogglePinSegment={setPinnedDonutId}
+              onSelectPerson={(person) => {
+                const emailNorm = (person.email || '').trim().toLowerCase();
+                const matchedApp = companyApplications.find(
+                  (a) =>
+                    a.id === person.id ||
+                    (emailNorm && (a.candidateEmail || '').trim().toLowerCase() === emailNorm)
+                );
+                if (matchedApp) {
+                  setProfileDrawerApp(matchedApp);
+                  return;
+                }
+                const matchedEmp = hiredEmployees.find(
+                  (e) =>
+                    e.id === person.id ||
+                    (emailNorm && (e.email || '').trim().toLowerCase() === emailNorm)
+                );
+                setProfileDrawerApp({
+                  id: matchedEmp?.id || person.id,
+                  vacancyId: '',
+                  vacancyTitle: matchedEmp?.role || person.roleOrVacancy,
+                  vacancyDepartment: matchedEmp?.department || 'General',
+                  candidateId: matchedEmp?.candidateId || person.id,
+                  candidateName: matchedEmp?.name || person.name,
+                  candidateEmail: matchedEmp?.email || person.email,
+                  candidatePhone: matchedEmp?.phone || '',
+                  appliedDate: matchedEmp?.hiredDate ? new Date(matchedEmp.hiredDate).toLocaleDateString() : '',
+                  updatedDate: matchedEmp?.hiredDate ? new Date(matchedEmp.hiredDate).toLocaleDateString() : '',
+                  timeline: [],
+                  status: matchedEmp?.status === 'Activo' ? 'Contratado' : (person.status as Application['status']),
+                  mlScore: person.affinity ?? 0,
+                  mlBreakdown: {
+                    affinityScore: person.affinity ?? 0,
+                    skillsMatch: person.affinity ?? 0,
+                    experienceMatch: person.affinity ?? 0,
+                    educationMatch: person.affinity ?? 0,
+                    matchingSkills: [],
+                    missingSkills: [],
+                    keyFactors: [],
+                    fairnessChecked: true,
+                    explanation: 'Colaborador vinculado a la plantilla activa de la empresa.',
+                  },
+                });
+              }}
               companyName={currentEmpresaNombre}
             />
 
@@ -612,6 +664,15 @@ export const CompanyAdminDashboardPage: React.FC<{
               onClearSegment={() => {
                 setPinnedDonutId(null);
                 setHoveredDonutId(null);
+              }}
+              onSelectAffinityBand={(band, vacancyId) => {
+                setAffinityFilter(band);
+                if (vacancyId && companyVacancies.some((v) => v.id === vacancyId)) {
+                  setVacancyFilter(vacancyId);
+                } else {
+                  setVacancyFilter('all');
+                }
+                setActiveTab('candidates');
               }}
             />
             </div>
@@ -971,16 +1032,17 @@ export const CompanyAdminDashboardPage: React.FC<{
                   >
                     <span className="inline-flex items-center gap-2">
                       <SlidersHorizontal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>Filtros (Convocatoria)</span>
+                      <span>Filtros (Convocatoria y Afinidad)</span>
                     </span>
                     {isCandidateFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                 </div>
 
-                <div className={`${isCandidateFiltersOpen ? 'block' : 'hidden sm:block'}`}>
+                <div className={`${isCandidateFiltersOpen ? 'grid' : 'hidden sm:grid'} grid-cols-1 sm:grid-cols-2 gap-3`}>
                   <select
                     value={vacancyFilter}
                     onChange={(e) => setVacancyFilter(e.target.value)}
+                    aria-label="Filtrar por convocatoria"
                     className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 font-semibold"
                   >
                     <option value="all" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Todas las Convocatorias de la Empresa</option>
@@ -989,6 +1051,20 @@ export const CompanyAdminDashboardPage: React.FC<{
                         {v.title}
                       </option>
                     ))}
+                  </select>
+
+                  <select
+                    value={affinityFilter}
+                    onChange={(e) => setAffinityFilter(e.target.value as AffinityBandKey)}
+                    aria-label="Filtrar por rango de afinidad IA"
+                    className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-xs bg-white/60 dark:bg-white/[0.06] backdrop-blur-md border border-white/70 dark:border-white/15 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="all" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Todas las Afinidades IA</option>
+                    <option value="90-100" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Afinidad Sobresaliente (90–100%)</option>
+                    <option value="75-89" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Afinidad Alta (75–89%)</option>
+                    <option value="65-74" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Afinidad Media (65–74%)</option>
+                    <option value="50-64" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Afinidad Media-Baja (50–64%)</option>
+                    <option value="lt50" className="text-slate-900 dark:bg-slate-900 dark:text-slate-100">Afinidad Baja (&lt;50%)</option>
                   </select>
                 </div>
               </div>
@@ -1435,6 +1511,30 @@ export const CompanyAdminDashboardPage: React.FC<{
         isOpen={Boolean(profileDrawerApp)}
         onClose={() => setProfileDrawerApp(null)}
         application={profileDrawerApp}
+        currentEmployment={(() => {
+          if (!profileDrawerApp) return null;
+          const emailNorm = (profileDrawerApp.candidateEmail || '').trim().toLowerCase();
+          const activeEmp = hiredEmployees.find(
+            (e) =>
+              e.status === 'Activo' &&
+              (e.id === profileDrawerApp.id ||
+                e.candidateId === profileDrawerApp.candidateId ||
+                (emailNorm && (e.email || '').trim().toLowerCase() === emailNorm))
+          );
+          if (activeEmp) {
+            return {
+              companyName: currentEmpresaNombre,
+              role: activeEmp.role || profileDrawerApp.vacancyTitle,
+            };
+          }
+          if (profileDrawerApp.status === 'Contratado') {
+            return {
+              companyName: currentEmpresaNombre,
+              role: profileDrawerApp.vacancyTitle,
+            };
+          }
+          return null;
+        })()}
         onOpenChat={(app) => {
           setProfileDrawerApp(null);
           setFocusChatAppId(app.id);
