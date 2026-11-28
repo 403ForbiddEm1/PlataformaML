@@ -1268,6 +1268,7 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?:
                         (a) =>
                           typeof a.mlScore === 'number' &&
                           a.mlScore < 50 &&
+                          !/pendiente de evaluaci/i.test(a.mlBreakdown?.explanation || '') &&
                           a.status !== 'Descartado' &&
                           a.status !== 'Contratado'
                       );
@@ -1393,9 +1394,6 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?:
                                 <span className="underline decoration-[#C8B193] dark:decoration-[#C8FF45]/40 underline-offset-4">
                                   {app.candidateName}
                                 </span>
-                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                  {app.candidateAge || 26} años
-                                </span>
                               </button>
                               <Badge status={app.status} />
                               <button
@@ -1415,9 +1413,6 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?:
                             </p>
 
                             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 dark:text-slate-400 pt-1">
-                              <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
-                                Edad: <strong className="text-slate-800 dark:text-slate-100">{app.candidateAge || 26} años</strong>
-                              </span>
                               <span className="flex items-center gap-1">
                                 <Mail className="w-3.5 h-3.5" /> {app.candidateEmail}
                               </span>
@@ -1457,7 +1452,11 @@ export const HRDashboardPage: React.FC<{ onNavigate: (view: string, initialTab?:
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 justify-end">
                               <MLScoreBadge
-                                score={app.mlScore || 80}
+                                score={typeof app.mlScore === 'number' ? app.mlScore : null}
+                                pending={Boolean(
+                                  app.mlBreakdown?.explanation &&
+                                    /pendiente de evaluaci/i.test(app.mlBreakdown.explanation)
+                                )}
                                 size="lg"
                                 onClick={() => {
                                   setSelectedApp(app);

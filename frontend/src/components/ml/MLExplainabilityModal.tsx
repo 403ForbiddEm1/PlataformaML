@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { MLFactorBreakdown } from '@/types';
-import { ShieldCheck, CheckCircle2, XCircle, Brain, Sparkles, TrendingUp } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, XCircle, Brain, Sparkles, TrendingUp, AlertTriangle } from 'lucide-react';
 
 interface MLExplainabilityModalProps {
   isOpen: boolean;
@@ -20,6 +20,18 @@ export const MLExplainabilityModal: React.FC<MLExplainabilityModalProps> = ({
 }) => {
   if (!breakdown) return null;
 
+  const isPendingML =
+    /pendiente de evaluaci/i.test(breakdown.explanation || '') ||
+    (breakdown.keyFactors || []).some((f) => /no respondi/i.test(f));
+
+  const scoreBoxClass = isPendingML
+    ? 'bg-amber-600 border-amber-700 text-white'
+    : breakdown.affinityScore >= 75
+    ? 'bg-[#0B5D46] border-emerald-800 text-white'
+    : breakdown.affinityScore >= 60
+    ? 'bg-amber-600 border-amber-700 text-white'
+    : 'bg-rose-600 border-rose-700 text-white';
+
   return (
     <Modal
       isOpen={isOpen}
@@ -30,15 +42,27 @@ export const MLExplainabilityModal: React.FC<MLExplainabilityModalProps> = ({
       variant="manila"
     >
       <div className="space-y-5">
+        {isPendingML && (
+          <div className="p-3.5 rounded-xl border border-amber-400/60 bg-amber-50 dark:bg-amber-950/35 flex items-start gap-3 text-xs text-amber-950 dark:text-amber-200">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Microservicio de Machine Learning sin respuesta durante esta postulación</p>
+              <p className="text-amber-800 dark:text-amber-300/90 mt-0.5 leading-snug">
+                El backend no recibió respuesta del servicio Python de ML (por ejemplo, servicio en reposo/inicio en frío o URL/clave no disponible), por lo que no se generó ningún puntaje simulado.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Casilla Oficial de Puntaje */}
         <div className="p-4 rounded-xl bg-[#F4EFE4] dark:bg-slate-800/80 border border-[#C8B496] dark:border-slate-700 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-14 rounded-lg bg-[#0B5D46] text-white flex flex-col items-center justify-center border border-emerald-800 shadow-xs shrink-0">
-              <span className="text-[9px] uppercase tracking-widest text-emerald-200 font-mono-tabular">
-                SCORE
+            <div className={`w-16 h-14 rounded-lg flex flex-col items-center justify-center border shadow-xs shrink-0 ${scoreBoxClass}`}>
+              <span className="text-[9px] uppercase tracking-widest opacity-85 font-mono-tabular">
+                {isPendingML ? 'ESTADO' : 'SCORE'}
               </span>
-              <span className="font-mono-tabular font-bold text-xl leading-none mt-0.5">
-                {breakdown.affinityScore}%
+              <span className="font-mono-tabular font-bold text-lg leading-none mt-0.5">
+                {isPendingML ? 'N/A' : `${breakdown.affinityScore}%`}
               </span>
             </div>
             <div>
@@ -46,9 +70,15 @@ export const MLExplainabilityModal: React.FC<MLExplainabilityModalProps> = ({
                 <span className="text-xs font-bold tracking-wider uppercase text-slate-900 dark:text-slate-100">
                   Índice de Afinidad Ponderado
                 </span>
-                <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 px-2 py-0.5 rounded-md font-semibold">
-                  <Sparkles className="w-3 h-3" /> Evaluación Objetiva
-                </span>
+                {isPendingML ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800 px-2 py-0.5 rounded-md font-semibold">
+                    <AlertTriangle className="w-3 h-3" /> Pendiente de ML
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 px-2 py-0.5 rounded-md font-semibold">
+                    <Sparkles className="w-3 h-3" /> Evaluación Objetiva
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 Calculado mediante similitud vectorial de competencias y clasificación supervisada auditada.
@@ -160,13 +190,22 @@ export const MLExplainabilityModal: React.FC<MLExplainabilityModalProps> = ({
         </div>
 
         {/* Model Qualitative Interpretation */}
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-[#DED7C8] dark:border-slate-800">
-          <h5 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-            Dictamen Técnico del Modelo
-          </h5>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-serif-editorial italic">
-            "{breakdown.explanation}"
-          </p>
+        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-[#DED7C8] dark:border-slate-800 space-y-2.5">
+          <div>
+            <h5 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+              Dictamen Técnico del Modelo
+            </h5>
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-serif-editorial italic">
+              "{breakdown.explanation}"
+            </p>
+          </div>
+          {breakdown.keyFactors && breakdown.keyFactors.length > 0 && (
+            <ul className="pt-2 border-t border-slate-200/70 dark:border-slate-800 space-y-1 text-xs text-slate-600 dark:text-slate-400 list-disc pl-4">
+              {breakdown.keyFactors.map((factor, idx) => (
+                <li key={idx}>{factor}</li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* RNF03: Fairness Guarantee Box */}

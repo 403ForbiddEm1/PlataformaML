@@ -178,7 +178,10 @@ export const HireCandidateModal: React.FC<HireCandidateModalProps> = ({
             <div>
               <span className="text-[10px] text-slate-400 block">Afinidad IA</span>
               <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                {application.mlScore ?? 80}% de compatibilidad
+                {typeof application.mlScore === 'number' &&
+                !/pendiente de evaluaci/i.test(application.mlBreakdown?.explanation || '')
+                  ? `${application.mlScore}% de compatibilidad`
+                  : 'Pendiente de evaluación IA'}
               </span>
             </div>
           </div>

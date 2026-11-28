@@ -83,7 +83,7 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                {application.candidateName} · <span className="font-mono-tabular">{application.candidateAge || 26} años</span>
+                {application.candidateName}
               </h4>
               <Badge status={application.status} />
             </div>
@@ -94,7 +94,11 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
 
           <div className="flex items-center gap-2">
             <MLScoreBadge
-              score={application.mlScore}
+              score={typeof application.mlScore === 'number' ? application.mlScore : null}
+              pending={Boolean(
+                application.mlBreakdown?.explanation &&
+                  /pendiente de evaluaci/i.test(application.mlBreakdown.explanation)
+              )}
               onClick={onOpenExplainability}
             />
           </div>
@@ -113,12 +117,6 @@ export const ApplicationDetailModal: React.FC<ApplicationDetailModalProps> = ({
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-mono-tabular">
               <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span>{application.candidatePhone}</span>
-            </div>
-            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 pt-0.5">
-              <span className="font-semibold text-slate-500 text-[11px]">Edad declarada:</span>
-              <span className="font-mono-tabular font-semibold text-slate-800 dark:text-slate-200">
-                {application.candidateAge || 26} años
-              </span>
             </div>
           </div>
 

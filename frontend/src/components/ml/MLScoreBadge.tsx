@@ -3,6 +3,7 @@ import { Sparkles } from 'lucide-react';
 
 interface MLScoreBadgeProps {
   score?: number | null;
+  pending?: boolean;
   size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
   onClick?: () => void;
@@ -10,11 +11,12 @@ interface MLScoreBadgeProps {
 
 export const MLScoreBadge: React.FC<MLScoreBadgeProps> = ({
   score,
+  pending = false,
   size = 'md',
   showLabel = true,
   onClick,
 }) => {
-  const isEvaluated = typeof score === 'number' && !Number.isNaN(score);
+  const isEvaluated = !pending && typeof score === 'number' && !Number.isNaN(score);
 
   const getColor = (s: number) => {
     if (s >= 90)
@@ -48,6 +50,13 @@ export const MLScoreBadge: React.FC<MLScoreBadgeProps> = ({
 
   const style = isEvaluated
     ? getColor(score as number)
+    : pending
+    ? {
+        bg: 'bg-amber-50 dark:bg-amber-950/40',
+        text: 'text-amber-800 dark:text-amber-300',
+        border: 'border-amber-300 dark:border-amber-800',
+        icon: 'text-amber-600 dark:text-amber-400',
+      }
     : {
         bg: 'bg-slate-100 dark:bg-slate-800',
         text: 'text-slate-600 dark:text-slate-400',
@@ -73,6 +82,8 @@ export const MLScoreBadge: React.FC<MLScoreBadgeProps> = ({
       title={
         isEvaluated
           ? `Afinidad algorítmica: ${score}%. Clic para ver acta de factores explicativos`
+          : pending
+          ? 'Pendiente de evaluación: el microservicio de ML no respondió al recibir la postulación'
           : 'Sin evaluar por el modelo de IA'
       }
     >
@@ -83,7 +94,7 @@ export const MLScoreBadge: React.FC<MLScoreBadgeProps> = ({
           {showLabel && <span className="opacity-80 font-medium">Afinidad</span>}
         </>
       ) : (
-        <span className="font-medium">Sin evaluar</span>
+        <span className="font-medium">{pending ? 'Pendiente IA' : 'Sin evaluar'}</span>
       )}
     </div>
   );

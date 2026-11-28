@@ -185,7 +185,11 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                   </p>
                 </div>
                 <MLScoreBadge
-                  score={typeof application.mlScore === 'number' ? application.mlScore : 0}
+                  score={typeof application.mlScore === 'number' ? application.mlScore : null}
+                  pending={Boolean(
+                    application.mlBreakdown?.explanation &&
+                      /pendiente de evaluaci/i.test(application.mlBreakdown.explanation)
+                  )}
                   size="lg"
                   onClick={() => onOpenExplainability && onOpenExplainability(application)}
                 />

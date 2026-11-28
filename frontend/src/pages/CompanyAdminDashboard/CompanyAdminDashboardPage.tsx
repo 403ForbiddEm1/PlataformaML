@@ -423,7 +423,7 @@ export const CompanyAdminDashboardPage: React.FC<{
             0
           ) / totalCompanyApps
         )
-      : 88;
+      : 0;
 
   // Filtered Candidates
   const filteredCandidates = companyApplications.filter((a) => {
